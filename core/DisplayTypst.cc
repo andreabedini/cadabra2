@@ -5,6 +5,8 @@
 #include "Grouping.hh"
 #include "DisplayTypst.hh"
 #include "Algorithm.hh"
+#include "algorithms/substitute.hh"
+#include "properties/TypstForm.hh"
 #include "properties/Derivative.hh"
 #include "properties/Accent.hh"
 #include "properties/Tableau.hh"
@@ -205,12 +207,14 @@ bool DisplayTypst::reads_as_operator(Ex::iterator obj, Ex::iterator arg) const
 	const Derivative *der=kernel.properties.get<Derivative>(obj);
 	if(der) {
 		if(*arg->name=="\\pow") return true;
-		if((*arg->name).size()==1 || cadabra::symbols::greekmap.find(*arg->name)!=cadabra::symbols::greekmap.end()) return true;
+		const TypstForm *tf = kernel.properties.get<TypstForm>(arg);
+		if((*arg->name).size()==1 || tf || cadabra::symbols::greekmap.find(*arg->name)!=cadabra::symbols::greekmap.end()) return true;
 		}
 
 	if(*obj->name=="\\cos" || *obj->name=="\\sin" || *obj->name=="\\tan" || *obj->name=="\\exp") {
+		const TypstForm *tf = kernel.properties.get<TypstForm>(arg);
 		if(*arg->multiplier==1)
-			if((*arg->name).size()==1 || cadabra::symbols::greekmap.find(*arg->name)!=cadabra::symbols::greekmap.end()) return true;
+			if((*arg->name).size()==1 || tf || cadabra::symbols::greekmap.find(*arg->name)!=cadabra::symbols::greekmap.end()) return true;
 		}
 
 	if(call_operators.find(*obj->name)!=call_operators.end()) return true;
@@ -246,14 +250,58 @@ void DisplayTypst::print_other(std::ostream& str, Ex::iterator it)
 		return;
 		}
 
-	std::string name = typstify(*it->name);
-	// Names like `a13` print as `a_13`, which cannot take any further
-	// subscripts; box them so they act as a single base.
-	if(name.find('_')!=std::string::npos && has_scripts(it))
-		str << "#box($" << name << "$)";
-	else
-		str << name;
-	print_children(str, it);
+	Ex_comparator comp(kernel.properties);
+	int num;
+	auto prop=kernel.properties.get_with_pattern_ext<TypstForm>(it, comp, num, "", false, true);  // get property, ignore parent rel!
+	const TypstForm *tf=prop.first;
+
+	if(tf) {
+		// As for LaTeXForm in DisplayTeX: use the pattern as the lhs, and
+		// one-by-one the elements in the property as the rhs, e.g.
+		//
+		//     ket(A??) -> "|"
+		//     ket(A??) -> A??
+		//     ...
+		//
+		// Strings are copied verbatim, and the pieces are separated by
+		// spaces, which is how Typst separates tokens.
+
+		bool first=true;
+		for(auto tt: tf->typst) {
+			if(!first) str << " ";
+			first=false;
+			auto s = *(tt.begin()->name);
+			if(s[0]=='\"') {
+				s=s.substr(1,s.size()-2);
+				str << s;
+				if(tf->typst.size()==1)
+					print_children(str, it);
+				}
+			else {
+				Ex replacement("\\arrow");
+				replacement.append_child(replacement.begin(), prop.second->obj.begin());
+				replacement.append_child(replacement.begin(), tt.begin());
+				Ex tmp(it);
+				// The overall multiplier has already been printed, so set to one now.
+				one(tmp.begin()->multiplier);
+				substitute subs(kernel, tmp, replacement);
+				auto tti=tmp.begin();
+				if(subs.can_apply(tti))
+					subs.apply(tti);
+				dispatch(str, tmp.begin());
+				}
+			}
+		}
+	else {
+		std::string name = typstify(*it->name);
+		// Names like `a13` print as `a_13`, which cannot take any further
+		// subscripts; box them so they act as a single base.
+		if(name.find('_')!=std::string::npos && has_scripts(it))
+			str << "#box($" << name << "$)";
+		else
+			str << name;
+		print_children(str, it);
+		}
 
 	if(needs_brackets(it))
 		str << ")";
@@ -278,15 +326,16 @@ void DisplayTypst::print_tableau(std::ostream& str, Ex::iterator it)
 		++sib;
 		}
 
-	str << "#box(baseline: 50% - 0.25em, table(columns: (0.8em,) * " << columns
-	    << ", rows: 0.8em, inset: 0pt";
+	// No styling arguments, so that `#set table(...)` and `#show table`
+	// rules apply; with the default inset empty cells are square.
+	str << "#table(columns: " << columns;
 	for(auto len: rows) {
 		for(size_t c=0; c<columns; ++c) {
 			if((long)c<len) str << ", []";
 			else            str << ", table.cell(stroke: none)[]";
 			}
 		}
-	str << "))";
+	str << ")";
 
 	if(needs_brackets(it))
 		str << ")";
@@ -321,8 +370,7 @@ void DisplayTypst::print_ftableau(std::ostream& str, Ex::iterator it)
 		++sib;
 		}
 
-	str << "#box(baseline: 50% - 0.25em, table(columns: " << columns
-	    << ", inset: 0.25em, align: center";
+	str << "#table(columns: " << columns;
 	for(auto& row: rows) {
 		for(size_t c=0; c<columns; ++c) {
 			if(c<row.size()) {
@@ -333,7 +381,7 @@ void DisplayTypst::print_ftableau(std::ostream& str, Ex::iterator it)
 			else str << ", table.cell(stroke: none)[]";
 			}
 		}
-	str << "))";
+	str << ")";
 
 	if(needs_brackets(it))
 		str << ")";
@@ -1154,15 +1202,16 @@ void DisplayTypst::print_components(std::ostream& str, Ex::iterator it)
 		print_indices(ind_names, tree.begin(c), tree.end(c));
 		};
 
-	// Display all unique components, one per row of a matrix.
-	str << " mat(delim: \"{\", align: #left";
+	// Display all unique components, one per row of a matrix,
+	// aligned on the first equals sign.
+	str << " mat(delim: \"{\"";
 	auto sib=tree.begin(ind_values);
 	while(sib!=tree.end(ind_values)) {
 		if( grp.find( sib ) == grp.end() ) {
 			str << (sib==tree.begin(ind_values) ? ", " : "; ");
 			Ex::sibling_iterator c=tree.begin(sib);
 			display_anon(c);
-			str << " = ";
+			str << " &= ";
 
 			for(const auto& equal_tensor: grp) {
 				if( equal_tensor.second.second == sib ) {

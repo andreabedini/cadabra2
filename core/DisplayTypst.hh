@@ -25,7 +25,12 @@ namespace cadabra {
 	///  - Symbols whose Typst names have changed between Typst versions
 	///    (e.g. `⊗`, `⊕`, `ℏ`) are emitted as Unicode characters.
 	///
-	/// The LaTeXForm property is not used, since its contents are LaTeX.
+	/// The output only uses standard Typst functions and symbols, without
+	/// hard-coded styling, so it can be customised with ordinary `#set` and
+	/// `#show` rules (e.g. `#show math.frac: ...`, `#set table(inset: 3pt)`).
+	/// The way individual symbols print can be changed with the TypstForm
+	/// property, the Typst counterpart of LaTeXForm (which is ignored here,
+	/// since its contents are LaTeX).
 
 	class DisplayTypst : public DisplayBase {
 		public:

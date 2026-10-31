@@ -11,6 +11,7 @@
 #include "py_kernel.hh"
 #include "py_tableau.hh"
 #include "properties/LaTeXForm.hh"
+#include "properties/TypstForm.hh"
 
 namespace cadabra {
 	class BoundPropertyBase

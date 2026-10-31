@@ -1,0 +1,178 @@
+# Tests for DisplayTypst, mirroring the DisplayTeX tests in display.cdb
+# and output.cdb. All generated output is collected in 'outputs' and,
+# if the 'typst' Python module is available, compiled at the end to
+# check that it is valid, standard Typst.
+
+outputs=[]
+
+def record(res):
+    # Note: _typst_() has to be called inside each test, so that it
+    # picks up the kernel of that test's scope.
+    outputs.append(res)
+    return res
+
+def test01():
+    # display.cdb test01 does not involve DisplayTeX; this is the
+    # equivalent round-trip check for the Typst output.
+    __cdbkernel__=create_scope()
+    ex:= 3 A_{m n} B^{m n} + q(x) r s;
+    assert(record(ex._typst_())=="3 thin A_(m n) B^(m n) + q(x) r s")
+    print("Test 01 passed")
+
+test01()
+
+def test02():
+    # display.cdb test02
+    __cdbkernel__=create_scope()
+    \psia::TypstForm("psi_a").
+    \bar{#}::DiracBar.
+    ex:= \bar{\psia};
+    assert(record(ex._typst_())=="overline(psi_a)")
+    print("Test 02 passed")
+
+test02()
+
+def test03():
+    # output.cdb test05
+    __cdbkernel__=create_scope()
+    ket{A??}::TypstForm("|", A??, "⟩");
+    ex:= a ket{n};
+    assert(record(ex._typst_())=="a | n ⟩")
+    print("Test 03a passed")
+    Q{A??}::TypstForm("R");
+    ex:= b Q{n};
+    assert(record(ex._typst_())=="b R(n)")
+    T{A??}::TypstForm(T_{A??});
+    ex:= b T{n_{1}};
+    assert(record(ex._typst_())=="b T_(n_(1))")
+    print("Test 03b passed")
+
+test03()
+
+def test04():
+    # The examples from the TypstForm manual page.
+    __cdbkernel__=create_scope()
+    \del{#}::TypstForm("partial");
+    ex:=\del_{m}(A);
+    assert(record(ex._typst_())=="partial_(m)(A)")
+    \ket{A??}{q??}::TypstForm("lr(|", A??, "⟩)_(", q??, ")");
+    ex:=\ket{n+1}{a};
+    assert(record(ex._typst_())=="lr(| n + 1 ⟩)_( a )")
+    ex:= 3 \iu x;
+    assert(record(ex._typst_())=="3 thin i x")
+    print("Test 04 passed")
+
+test04()
+
+def test05():
+    __cdbkernel__=create_scope()
+    {\mu,\nu,\rho}::Indices(position=independent).
+    ex:= A_{\mu} B^{\mu};
+    assert(record(ex._typst_())=="A_(mu) B^(mu)")
+    ex:= R_{\mu\nu}^{\rho};
+    assert(record(ex._typst_())=="R_(mu nu) zws^(rho)")
+    ex:= \Gamma^{\mu}_{\nu\rho} \epsilon \varepsilon;
+    assert(record(ex._typst_())=="Gamma^(mu) zws_(nu rho) epsilon.alt epsilon")
+    print("Test 05 passed")
+
+test05()
+
+def test06():
+    __cdbkernel__=create_scope()
+    ex:= 1/2 a b - 3/4 c;
+    assert(record(ex._typst_())=="frac(1, 2) thin a b  - frac(3, 4) thin c")
+    ex:= (a+b)**2 + x**(1/2) + ab**3 + c13 + a_{1}**2;
+    assert(record(ex._typst_())=="(a + b)^(2) + sqrt(x) + italic(\"ab\")^(3) + c_13 + a_(1) zws^(2)")
+    ex:= \foo;
+    assert(record(ex._typst_())=="\"foo\"")
+    ex=Ex(2.5e-10)
+    assert(record(ex._typst_())=="2.5 times 10^(-10)")
+    print("Test 06 passed")
+
+test06()
+
+def test07():
+    __cdbkernel__=create_scope()
+    \partial{#}::PartialDerivative.
+    {\mu,\nu}::Indices.
+    ex:= \partial_{\mu}{A_{\nu}} + \partial_{\mu\nu}{\phi \psi};
+    assert(record(ex._typst_())=="partial_(mu) A_(nu)  + partial_(mu nu)(phi.alt psi)")
+    ex:= \sin(x) + f(x, y);
+    assert(record(ex._typst_())=="sin x  + f(x , y)")
+    ex:= \int{f(x,y)}{(x,0,1)}{y};
+    assert(record(ex._typst_())=="integral_(0)^(1) integral f(x , y) dif x dif y")
+    print("Test 07 passed")
+
+test07()
+
+def test08():
+    __cdbkernel__=create_scope()
+    \hat{#}::Accent.
+    ex:= \hat{A} + \sqrt{x} + \commutator{A}{B} + \anticommutator{A}{B} + [a, b];
+    assert(record(ex._typst_())=="hat(A) + sqrt(x) + lr([A, B]) + lr(\\{A, B\\}) + lr([a, b])")
+    ex:= \unequals{a}{b};
+    assert(record(ex._typst_())=="a != b")
+    ex:= \arrow{a}{b};
+    assert(record(ex._typst_())=="a -> b")
+    ex:= \pow{#};
+    assert(record(ex._typst_())=="mono(\"\\\\pow{#}\")")
+    print("Test 08 passed")
+
+test08()
+
+def test09():
+    __cdbkernel__=create_scope()
+    __cdbkernel__.display_fractions=True
+    ex:= 3 a b**(-1) c**(-2) - 2/3 x**(-1);
+    assert(record(ex._typst_())=="frac(3 thin a, b c^(2)) -frac(2, 3 thin x)")
+    print("Test 09 passed")
+
+test09()
+
+def test10():
+    # Tableaux are plain Typst tables without any styling arguments.
+    __cdbkernel__=create_scope()
+    \tab{#}::Tableau.
+    \ftab{#}::FilledTableau.
+    ex:= \tab{2}{1} \tab{1}{1} + \ftab{a,b}{c};
+    assert(record(ex._typst_())=="#table(columns: 2, [], [], [], table.cell(stroke: none)[]) ⊗ #table(columns: 1, [], []) ⊕ #table(columns: 2, $a$, $b$, $c$, table.cell(stroke: none)[])")
+    print("Test 10 passed")
+
+test10()
+
+def test11():
+    # Components are a matrix aligned on the equals signs.
+    __cdbkernel__=create_scope()
+    {t,r}::Coordinate.
+    {\alpha,\beta}::Indices(values={t,r}, position=fixed).
+    g_{\alpha\beta}::Metric.
+    gs:= g_{t t} = -1, g_{r r} = r**2.
+    ex:= g_{\alpha\beta}.
+    evaluate(ex, gs, rhsonly=True)
+    assert(record(ex._typst_())=="square_(alpha) zws_(beta) mat(delim: \"{\", square_(t) zws_(t) &= -1; square_(r) zws_(r) &= r^(2))")
+    print("Test 11 passed")
+
+test11()
+
+def test12():
+    # Compile everything with Typst, if available, and check that
+    # standard set rules affect the output.
+    try:
+        import typst
+    except ImportError:
+        print("Test 12 skipped: no typst module")
+        return
+    doc="\n".join(["$ "+o+" $" for o in outputs])
+    for o in outputs:
+        typst.compile(("$ "+o+" $").encode("utf-8"))
+    def svg(preamble):
+        return typst.compile((preamble+doc).encode("utf-8"), format="svg")
+    plain=svg("")
+    for rule in ["#set table(inset: 2pt)\n",
+                 "#show math.frac: set text(fill: red)\n",
+                 "#show math.mat: set text(fill: red)\n",
+                 "#show math.lr: set text(fill: red)\n"]:
+        assert(svg(rule)!=plain)
+    print("Test 12 passed")
+
+test12()

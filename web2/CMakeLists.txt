@@ -192,6 +192,7 @@ set(PROPS
   Symmetric
   Tableau
   TableauSymmetry
+  TypstForm
   Weight
   WeightInherit
 )

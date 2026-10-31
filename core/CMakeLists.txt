@@ -168,6 +168,7 @@ set(PROPERTY_SRC_FILES
    properties/InverseMetric.cc
    properties/KroneckerDelta.cc
    properties/LaTeXForm.cc
+   properties/TypstForm.cc
    properties/Matrix.cc
    properties/Metric.cc
    properties/NonCommuting.cc

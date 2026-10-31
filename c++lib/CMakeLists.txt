@@ -176,6 +176,7 @@ set(LOCAL_SRC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/../core/properties/InverseMetric.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/../core/properties/KroneckerDelta.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/../core/properties/LaTeXForm.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/../core/properties/TypstForm.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/../core/properties/Matrix.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/../core/properties/Metric.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/../core/properties/NonCommuting.cc

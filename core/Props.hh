@@ -34,6 +34,7 @@ namespace cadabra {
 	class Kernel;
 	class Accent;
 	class LaTeXForm;
+	class TypstForm;
 	class Ex_comparator;
 	
 	class pattern {
@@ -422,7 +423,7 @@ namespace cadabra {
 
 		// Do not walk down the tree if the property cannot be passed up the tree.
 		// FIXME: see issue/259.
-		if(std::is_same<T, LaTeXForm>::value)
+		if(std::is_same<T, LaTeXForm>::value || std::is_same<T, TypstForm>::value)
 			inherits=false;
 		
 		// If no property was found, figure out whether a property is inherited from a child node.

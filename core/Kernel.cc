@@ -19,6 +19,7 @@
 #include "properties/FilledTableau.hh"
 #include "properties/ImaginaryI.hh"
 #include "properties/LaTeXForm.hh"
+#include "properties/TypstForm.hh"
 
 using namespace cadabra;
 
@@ -104,6 +105,9 @@ Kernel::Kernel(bool inject_defaults)
 		auto iu = new LaTeXForm();
 		iu->latex.push_back(Ex("i"));
 		inject_property(iu, ex_from_string("\\iu}"), 0);
+		auto iu_typst = new TypstForm();
+		iu_typst->typst.push_back(Ex("i"));
+		inject_property(iu_typst, ex_from_string("\\iu}"), 0);
 		}
 	}
 

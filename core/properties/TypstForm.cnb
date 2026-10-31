@@ -1,0 +1,88 @@
+{
+   "cell_id": 301024721174636341,
+   "cells": [
+      {
+         "cell_id": 2231509320045323730,
+         "cell_origin": "client",
+         "cell_type": "latex",
+         "cells": [
+            {
+               "cell_id": 6768414324819546491,
+               "cell_origin": "client",
+               "cell_type": "latex_view",
+               "source": "\\property{TypstForm}{Changes the way in which expressions are displayed in Typst output.}\n\nThe \\prop{TypstForm} property is the Typst counterpart of \\prop{LaTeXForm}: it changes\nthe way in which expressions are displayed when they are converted to Typst\nmath notation with the \\verb|_typst_()| member. In its simplest form, it acts\njust like a node rename operation,"
+            }
+         ],
+         "hidden": true,
+         "source": "\\property{TypstForm}{Changes the way in which expressions are displayed in Typst output.}\n\nThe \\prop{TypstForm} property is the Typst counterpart of \\prop{LaTeXForm}: it changes\nthe way in which expressions are displayed when they are converted to Typst\nmath notation with the \\verb|_typst_()| member. In its simplest form, it acts\njust like a node rename operation,"
+      },
+      {
+         "cell_id": 671399588655706780,
+         "cell_origin": "client",
+         "cell_type": "input",
+         "source": "\\del{#}::TypstForm(\"partial\");\nex:=\\del_{m}(A);\nex._typst_();"
+      },
+      {
+         "cell_id": 376943688061053864,
+         "cell_origin": "client",
+         "cell_type": "latex",
+         "cells": [
+            {
+               "cell_id": 2279175485154909188,
+               "cell_origin": "client",
+               "cell_type": "latex_view",
+               "source": "This produces \\verb|partial_(m)(A)|. The strings are copied verbatim into the output,\nso they should be standard Typst math markup, e.g. \\verb|\"psi_a\"|, \\verb|\"cal(L)\"| or\n\\verb|\"hat(x)\"|. Symbols without a \\prop{TypstForm} which are not known Typst symbols\nare printed as quoted strings (e.g. \\verb|\\foo| prints as \\verb|\"foo\"|).\n\nNote that the property is attached to a pattern (\\verb|\\del{#}| in\nthis case) which matches the expression in which the replacement has\nto be made, exactly as for \\prop{LaTeXForm}."
+            }
+         ],
+         "hidden": true,
+         "source": "This produces \\verb|partial_(m)(A)|. The strings are copied verbatim into the output,\nso they should be standard Typst math markup, e.g. \\verb|\"psi_a\"|, \\verb|\"cal(L)\"| or\n\\verb|\"hat(x)\"|. Symbols without a \\prop{TypstForm} which are not known Typst symbols\nare printed as quoted strings (e.g. \\verb|\\foo| prints as \\verb|\"foo\"|).\n\nNote that the property is attached to a pattern (\\verb|\\del{#}| in\nthis case) which matches the expression in which the replacement has\nto be made, exactly as for \\prop{LaTeXForm}."
+      },
+      {
+         "cell_id": 2039980648689626397,
+         "cell_origin": "client",
+         "cell_type": "latex",
+         "cells": [
+            {
+               "cell_id": 1462206891191840610,
+               "cell_origin": "client",
+               "cell_type": "latex_view",
+               "source": "If you want more control over the way in which elements of your original expression\nare printed, you can use patterns like in the example below:"
+            }
+         ],
+         "hidden": true,
+         "source": "If you want more control over the way in which elements of your original expression\nare printed, you can use patterns like in the example below:"
+      },
+      {
+         "cell_id": 8409542688971375347,
+         "cell_origin": "client",
+         "cell_type": "input",
+         "source": "\\ket{A??}{q??}::TypstForm(\"lr(|\", A??, \"⟩)_(\", q??, \")\");\nex:=\\ket{n+1}{a};\nex._typst_();"
+      },
+      {
+         "cell_id": 5287349566442103283,
+         "cell_origin": "client",
+         "cell_type": "latex",
+         "cells": [
+            {
+               "cell_id": 6996426936371382263,
+               "cell_origin": "client",
+               "cell_type": "latex_view",
+               "source": "The comma-separated list of arguments to \\prop{TypstForm} will be joined, separated by\nspaces, into a single Typst output string, with patterns replaced by their normal output\nform. The example above produces \\verb#lr(| n + 1 ⟩)_( a )#.\n\nThe Typst output only uses standard Typst functions such as \\verb|frac|, \\verb|lr|,\n\\verb|mat| and \\verb|table|, without hard-coded styling. It can therefore be customised\nin the document with the usual \\verb|#set| and \\verb|#show| rules, for instance\n\\verb|#set table(inset: 3pt)| to change the size of Young tableaux, or\n\\verb|#show math.frac: ...| to change the way fractions are typeset."
+            }
+         ],
+         "hidden": true,
+         "source": "The comma-separated list of arguments to \\prop{TypstForm} will be joined, separated by\nspaces, into a single Typst output string, with patterns replaced by their normal output\nform. The example above produces \\verb#lr(| n + 1 ⟩)_( a )#.\n\nThe Typst output only uses standard Typst functions such as \\verb|frac|, \\verb|lr|,\n\\verb|mat| and \\verb|table|, without hard-coded styling. It can therefore be customised\nin the document with the usual \\verb|#set| and \\verb|#show| rules, for instance\n\\verb|#set table(inset: 3pt)| to change the size of Young tableaux, or\n\\verb|#show math.frac: ...| to change the way fractions are typeset."
+      },
+      {
+         "cell_id": 9104728387537514290,
+         "cell_origin": "client",
+         "cell_type": "input",
+         "source": ""
+      }
+   ],
+   "description": "Cadabra JSON notebook format",
+   "flags": {
+      "hide_input_cells": false
+   },
+   "version": 1.0
+}

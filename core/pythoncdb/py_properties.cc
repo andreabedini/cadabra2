@@ -32,6 +32,7 @@
 #include "properties/InverseMetric.hh"
 #include "properties/KroneckerDelta.hh"
 #include "properties/LaTeXForm.hh"
+#include "properties/TypstForm.hh"
 #include "properties/Matrix.hh"
 #include "properties/Metric.hh"
 #include "properties/NonCommuting.hh"
@@ -415,6 +416,7 @@ namespace cadabra {
 		using Py_Indices = BoundProperty<Indices, Py_list_property>;
 		using Py_Integer = BoundProperty<Integer, BoundPropertyBase>;
 		using Py_LaTeXForm = BoundProperty<LaTeXForm, BoundPropertyBase>;
+		using Py_TypstForm = BoundProperty<TypstForm, BoundPropertyBase>;
 		using Py_SortOrder = BoundProperty<SortOrder, Py_list_property>;
 		using Py_Symbol = BoundProperty<Symbol, BoundPropertyBase>;
 		using Py_Tableau = BoundProperty<Tableau, BoundPropertyBase>;
@@ -450,6 +452,8 @@ namespace cadabra {
 			.def_property_readonly("difference", [](const Py_Integer & p) { return p.get_prop()->difference; });
 		def_prop<Py_LaTeXForm>(m)
 			.def("latex_form", [](const Py_LaTeXForm & p) { return p.get_prop()->latex_form(); });
+		def_prop<Py_TypstForm>(m)
+			.def("typst_form", [](const Py_TypstForm & p) { return p.get_prop()->typst_form(); });
 		def_prop<Py_SortOrder>(m);
 		def_prop<Py_Symbol>(m);
 		def_prop<Py_Tableau>(m)
