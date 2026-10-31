@@ -40,6 +40,7 @@ class ExNode : public cadabra::IndexClassifier {
 
 		std::string __str__() const;
 		std::string _latex_() const;
+		std::string _typst_() const;
 	   std::string input_form() const;
 	
 		std::string get_name() const;

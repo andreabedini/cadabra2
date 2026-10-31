@@ -27,6 +27,7 @@
 #include <sstream>
 #include "DisplayMMA.hh"
 #include "DisplayTeX.hh"
+#include "DisplayTypst.hh"
 #include "DisplaySympy.hh"
 #include "DisplayTerminal.hh"
 
@@ -292,6 +293,15 @@ namespace cadabra {
 		if (!ex) return "";
 		std::ostringstream str;
 		DisplayTeX dt(*get_kernel_from_scope(), *ex);
+		dt.output(str);
+		return str.str();
+		}
+
+	std::string Ex_as_typst(Ex_ptr ex)
+		{
+		if (!ex) return "";
+		std::ostringstream str;
+		DisplayTypst dt(*get_kernel_from_scope(), *ex);
 		dt.output(str);
 		return str.str();
 		}
@@ -691,6 +701,7 @@ namespace cadabra {
 		.def(py::init(&Ex_from_float), py::arg("num"), py::arg("make_ref") = true)
 		.def("__str__", &Ex_as_str)
 		.def("_latex_", &Ex_as_latex)
+		.def("_typst_", &Ex_as_typst)
 		.def("__repr__", &Ex_as_repr)
 		.def("__eq__", static_cast<bool(*)(Ex_ptr, Ex_ptr)>(&Ex_compare))
 		.def("__eq__", static_cast<bool(*)(Ex_ptr, int)>(&Ex_compare))
@@ -765,6 +776,7 @@ namespace cadabra {
 			.def("__setitem__", &ExNode::setitem_string)
 			.def("__setitem__", &ExNode::setitem_iterator)
 			.def("_latex_", &ExNode::_latex_)
+			.def("_typst_", &ExNode::_typst_)
 			.def("__str__", &ExNode::__str__)
 			.def("_sympy_", &ExNode_as_sympy)
 			.def("terms", &ExNode::terms, "Return an ExNode iterator over all terms at the level of the current ExNode.")

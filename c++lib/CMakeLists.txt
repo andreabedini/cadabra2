@@ -119,6 +119,7 @@ set(LOCAL_SRC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/../core/Compare.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/../core/DisplayBase.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/../core/DisplayTeX.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/../core/DisplayTypst.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/../core/DisplaySympy.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/../core/DisplayTerminal.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/../core/Grouping.cc

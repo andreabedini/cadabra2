@@ -9,6 +9,7 @@
 #include <pybind11/operators.h>
 #include <pybind11/stl.h>
 #include "DisplayTeX.hh"
+#include "DisplayTypst.hh"
 #include "DisplaySympy.hh"
 #include "DisplayTerminal.hh"
 #include "pythoncdb/py_ex.hh"
@@ -473,6 +474,17 @@ std::string ExNode::_latex_() const
 
 	std::ostringstream str;
 	DisplayTeX dt(*get_kernel_from_scope(), Ex(it));
+	dt.output(str, it);
+	return str.str();
+	}
+
+std::string ExNode::_typst_() const
+	{
+	if(!ex->is_valid(it))
+		throw ConsistencyException("Cannot print iterator Typst form before the first 'next'.");
+
+	std::ostringstream str;
+	DisplayTypst dt(*get_kernel_from_scope(), Ex(it));
 	dt.output(str, it);
 	return str.str();
 	}

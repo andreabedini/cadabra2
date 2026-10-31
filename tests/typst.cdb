@@ -1,0 +1,58 @@
+def test01():
+    __cdbkernel__=create_scope()
+    {\mu,\nu,\rho}::Indices(position=independent).
+    ex:= A_{\mu} B^{\mu}.
+    assert(ex._typst_()=="A_(mu) B^(mu)")
+    ex:= R_{\mu\nu}^{\rho}.
+    assert(ex._typst_()=="R_(mu nu) zws^(rho)")
+    ex:= \Gamma^{\mu}_{\nu\rho} \epsilon \varepsilon.
+    assert(ex._typst_()=="Gamma^(mu) zws_(nu rho) epsilon.alt epsilon")
+    print("Test 01 passed")
+
+test01()
+
+def test02():
+    __cdbkernel__=create_scope()
+    ex:= 1/2 a b - 3/4 c.
+    assert(ex._typst_()=="frac(1, 2) thin a b  - frac(3, 4) thin c")
+    ex:= (a+b)**2 + x**(1/2) + ab**3 + c13.
+    assert(ex._typst_()=="(a + b)^(2) + sqrt(x) + italic(\"ab\")^(3) + c_13")
+    print("Test 02 passed")
+
+test02()
+
+def test03():
+    __cdbkernel__=create_scope()
+    \partial{#}::PartialDerivative.
+    {\mu,\nu}::Indices.
+    ex:= \partial_{\mu}{A_{\nu}} + \partial_{\mu\nu}{\phi \psi}.
+    assert(ex._typst_()=="partial_(mu) A_(nu)  + partial_(mu nu)(phi.alt psi)")
+    ex:= \sin(x) + f(x, y).
+    assert(ex._typst_()=="sin x  + f(x , y)")
+    ex:= \int{f(x,y)}{(x,0,1)}{y}.
+    assert(ex._typst_()=="integral_(0)^(1) integral f(x , y) dif x dif y")
+    print("Test 03 passed")
+
+test03()
+
+def test04():
+    __cdbkernel__=create_scope()
+    \hat{#}::Accent.
+    ex:= \hat{A} + \sqrt{x} + \commutator{A}{B} + [a, b].
+    assert(ex._typst_()=="hat(A) + sqrt(x) + lr([A, B]) + lr([a, b])")
+    ex:= \unequals{a}{b}.
+    assert(ex._typst_()=="a != b")
+    ex:= \pow{#}.
+    assert(ex._typst_()=="mono(\"\\\\pow{#}\")")
+    print("Test 04 passed")
+
+test04()
+
+def test05():
+    __cdbkernel__=create_scope()
+    __cdbkernel__.display_fractions=True
+    ex:= 3 a b**(-1) c**(-2) - 2/3 x**(-1).
+    assert(ex._typst_()=="frac(3 thin a, b c^(2)) -frac(2, 3 thin x)")
+    print("Test 05 passed")
+
+test05()

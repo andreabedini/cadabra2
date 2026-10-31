@@ -62,6 +62,13 @@ namespace cadabra {
 	///internally uses DisplayTeX to do the actual printing.
 	std::string Ex_as_latex(Ex_ptr);
 
+	/// \ingroup pythoncore
+	///
+	/// Outputs a Cadabra 'Ex' in Typst math notation (without the
+	/// enclosing dollar signs), using DisplayTypst. Is mapped to a
+	/// '_typst_()' member on each Ex object.
+	std::string Ex_as_typst(Ex_ptr);
+
 	/// \ingroup scalar
 	///
 	/// Outputs a Cadabra 'Ex' as a Sympy expression. This first converts the

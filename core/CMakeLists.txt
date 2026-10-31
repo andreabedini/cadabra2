@@ -241,6 +241,7 @@ set(LOCAL_SRC_FILES
   DisplayBase.cc
   DisplayMMA.cc
   DisplayTeX.cc
+  DisplayTypst.cc
   DisplaySympy.cc
   DisplayTerminal.cc
   TerminalStream.cc

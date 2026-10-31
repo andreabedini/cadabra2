@@ -98,6 +98,7 @@ set(RTESTS
   meld
   numerical
   output
+  typst
   substitute
   canonicalise
   derivative
