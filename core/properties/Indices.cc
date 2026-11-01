@@ -59,7 +59,7 @@ bool Indices::parse(Kernel& kernel, std::shared_ptr<Ex> ex, keyval_t& keyvals)
 
 			parent_name=*ki->second.begin()->name;
 			if(parent_name.size()>0) {
-				if(parent_name[0]=='\"' && parent_name[set_name.size()-1]=='\"')
+				if(parent_name[0]=='\"' && parent_name[parent_name.size()-1]=='\"')
 					parent_name=parent_name.substr(1,parent_name.size()-2);
 				}
 			}

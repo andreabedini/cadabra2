@@ -405,7 +405,7 @@ DocumentThread::Prefs::Prefs(bool use_defaults)
 
 	const auto& latex_colours = data["colours"]["latex"];
 	colours["latex"]["command"]    = latex_colours.value("command", "rgb(52,101,164)");
-	colours["latex"]["parameter"]  = latex_colours.value("brace", "rgb(245,121,0)");
+	colours["latex"]["parameter"]  = latex_colours.value("parameter", "rgb(245,121,0)");
 	colours["latex"]["comment"]    = latex_colours.value("comment", "Silver");
 	colours["latex"]["maths"]      = latex_colours.value("maths", "Sienna");
 #endif

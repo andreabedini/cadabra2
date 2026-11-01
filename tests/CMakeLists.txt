@@ -30,7 +30,7 @@ else()
 endif()
 message("-- Set PYTHONPATH for testing to ${PYTHONPATH}")
 
-if (!WIN32)
+if(NOT WIN32)
   add_test(comparison     test_comparison)
 endif()
 
@@ -132,7 +132,7 @@ if(APPLE)
    add_definitions("-I/usr/local/include")
 endif()
 
-if (!WIN32)
+if(NOT WIN32)
    find_library(GMP_LIB gmp REQUIRED)
    find_library(GMPXX_LIB gmpxx REQUIRED)
    include_directories(${CMAKE_SOURCE_DIR}/core ${GMPXX_LIB_INCLUDE_DIRS})

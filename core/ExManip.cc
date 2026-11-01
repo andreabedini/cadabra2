@@ -50,7 +50,6 @@ bool ExManip::prod_unwrap_single_term(iterator& it)
 		if(tr.number_of_children(it)==1) {
 			multiply(tr.begin(it)->multiplier, *it->multiplier);
 			tr.begin(it)->fl.bracket=it->fl.bracket;
-			tr.begin(it)->multiplier=it->multiplier;
 			tr.flatten(it);
 			it=tr.erase(it);
 			return true;
@@ -65,7 +64,6 @@ bool ExManip::sum_unwrap_single_term(iterator& it)
 		if(tr.number_of_children(it)==1) {
 			multiply(tr.begin(it)->multiplier, *it->multiplier);
 			tr.begin(it)->fl.bracket=it->fl.bracket;
-			tr.begin(it)->multiplier=it->multiplier;
 			tr.flatten(it);
 			it=tr.erase(it);
 			return true;

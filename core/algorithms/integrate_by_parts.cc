@@ -188,7 +188,7 @@ Algorithm::result_t integrate_by_parts::handle_term(iterator int_it, iterator& i
 						from = tr.wrap(from, to, str_node("\\prod"));
 
 					auto der_arg = tr.begin(to);
-					while(der_arg->is_index() && der_arg!=tr.end(to))
+					while(der_arg!=tr.end(to) && der_arg->is_index())
 						++der_arg;
 
 					if(der_arg==tr.end(to))
@@ -210,7 +210,7 @@ Algorithm::result_t integrate_by_parts::handle_term(iterator int_it, iterator& i
 						from = tr.wrap(from, to, str_node("\\prod"));
 
 					der_arg = tr.begin(der);
-					while(der_arg->is_index() && der_arg!=tr.end(der))
+					while(der_arg!=tr.end(der) && der_arg->is_index())
 						++der_arg;
 
 					if(der_arg==tr.end(der))

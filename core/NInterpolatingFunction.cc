@@ -22,17 +22,24 @@ NInterpolatingFunction::NInterpolatingFunction()
 
 size_t NInterpolatingFunction::find_interval(double v) const
 	{
+	const size_t n = var_values.values.size();
+	if(n < 2)
+		throw ArgumentException("NInterpolatingFunction: need at least two points to interpolate.");
+
 	// Same interval as previously?
-	if(v >= var_values.values[last_index].real() && v<= var_values.values[last_index+1].real())
+	if(last_index+1 < n
+		&& v >= var_values.values[last_index].real() && v<= var_values.values[last_index+1].real())
 		return last_index;
 
 	// Hope that 'v' has just rolled into the next interval...
-	++last_index;
-	if(v >= var_values.values[last_index].real() && v<= var_values.values[last_index+1].real())
-		return last_index;
+	if(last_index+2 < n) {
+		++last_index;
+		if(v >= var_values.values[last_index].real() && v<= var_values.values[last_index+1].real())
+			return last_index;
+		}
 
 	// Exhaustive search.
-	for(last_index=0; last_index<var_values.values.size()-1; ++last_index)
+	for(last_index=0; last_index+1<n; ++last_index)
 		if(v >= var_values.values[last_index].real() && v<= var_values.values[last_index+1].real())
 			return last_index;
 

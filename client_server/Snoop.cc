@@ -976,7 +976,7 @@ bool Snoop::store_payload_entry(Snoop::PayLoad& payload)
 
 		sqlite3_step(payload_insert_statement);
 
-		payload.payload_id = sqlite3_last_insert_rowid(db);
+		payload.payload_id = sqlite3_last_insert_rowid(payload_db);
 		sqlite3_reset(payload_insert_statement);
 
 		return true;
