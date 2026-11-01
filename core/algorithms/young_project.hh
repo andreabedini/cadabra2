@@ -11,8 +11,8 @@ namespace cadabra {
 			young_project(const Kernel&, Ex&);
 			young_project(const Kernel&, Ex&, const std::vector<int>& shape, const std::vector<int>& indices);
 
-			virtual bool     can_apply(iterator);
-			virtual result_t apply(iterator&);
+			virtual bool     can_apply(iterator) override;
+			virtual result_t apply(iterator&) override;
 
 			// Boxes represent tensor slots, the values in them
 			// give the location in the tensor.

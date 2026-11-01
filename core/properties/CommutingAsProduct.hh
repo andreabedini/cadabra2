@@ -7,7 +7,7 @@ namespace cadabra {
 
 	class CommutingAsProduct : virtual public property {
 		public:
-			virtual std::string name() const;
+			virtual std::string name() const override;
 		};
 
 	}

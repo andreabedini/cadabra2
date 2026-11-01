@@ -209,7 +209,7 @@ namespace cadabra {
 	class Inherit : virtual public property {
 		public:
 			virtual ~Inherit() {};
-			virtual std::string name() const
+			virtual std::string name() const override
 				{
 //				T tmp;
 				// T can be abstract, so we cannot instantiate. Maybe use typeid,
@@ -223,7 +223,7 @@ namespace cadabra {
 
 	class PropertyInherit : virtual public property {
 		public:
-			virtual std::string name() const
+			virtual std::string name() const override
 				{
 				return std::string("PropertyInherit");
 				};

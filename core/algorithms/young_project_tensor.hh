@@ -10,8 +10,8 @@ namespace cadabra {
 		public:
 			young_project_tensor(const Kernel&, Ex&, bool);
 
-			virtual bool     can_apply(iterator);
-			virtual result_t apply(iterator&);
+			virtual bool     can_apply(iterator) override;
+			virtual result_t apply(iterator&) override;
 
 			bool modulo_monoterm;
 			combin::symmetriser<unsigned int> sym;

@@ -41,6 +41,7 @@ namespace cadabra {
 	class DocumentThread {
 		public:
 			DocumentThread(GUIBase *);
+			virtual ~DocumentThread() = default;
 
 			/// It is not possible to copy-construct a DocumentThread as
 			/// it holds on to resources which are not easily copied

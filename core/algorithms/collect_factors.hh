@@ -13,8 +13,8 @@ namespace cadabra {
 		public:
 			collect_factors(const Kernel&, Ex&);
 
-			virtual bool     can_apply(iterator);
-			virtual result_t apply(iterator&);
+			virtual bool     can_apply(iterator) override;
+			virtual result_t apply(iterator&) override;
 		private:
 			void fill_hash_map(iterator);
 

@@ -11,7 +11,7 @@ namespace cadabra {
 			virtual ~TableauBase();
 			typedef yngtab::filled_tableau<unsigned int> tab_t;
 
-			virtual std::string name() const;
+			virtual std::string name() const override;
 
 			virtual unsigned int size(const Properties&, Ex&, Ex::iterator) const=0;
 			virtual tab_t        get_tab(const Properties&, Ex&, Ex::iterator, unsigned int) const=0;

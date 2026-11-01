@@ -9,8 +9,8 @@ namespace cadabra {
 		public:
 			join_gamma(const Kernel&, Ex&, bool expand, bool use_gendelta);
 
-			virtual bool     can_apply(iterator);
-			virtual result_t apply(iterator&);
+			virtual bool     can_apply(iterator) override;
+			virtual result_t apply(iterator&) override;
 
 			bool expand;
 			std::vector<int>     only_expand;

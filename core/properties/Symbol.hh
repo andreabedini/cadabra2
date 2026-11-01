@@ -7,7 +7,7 @@ namespace cadabra {
 
 	class Symbol : public property {
 		public:
-			virtual std::string name() const;
+			virtual std::string name() const override;
 
 			static const Symbol *get(const Properties&, Ex::iterator, bool ignore_parent_rel=false);
 		};

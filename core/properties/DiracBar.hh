@@ -9,7 +9,7 @@ namespace cadabra {
 	class DiracBar : public Accent, public Distributable, virtual public property {
 		public:
 			virtual ~DiracBar();
-			virtual std::string name() const;
+			virtual std::string name() const override;
 		};
 
 	}

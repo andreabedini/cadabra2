@@ -11,8 +11,8 @@ namespace cadabra {
 		public:
 			split_index(const Kernel&, Ex&, Ex&);
 
-			virtual bool     can_apply(iterator);
-			virtual result_t apply(iterator&);
+			virtual bool     can_apply(iterator) override;
+			virtual result_t apply(iterator&) override;
 
 		private:
 			const Indices *full_class, *part1_class, *part2_class;

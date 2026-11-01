@@ -7,7 +7,7 @@ namespace cadabra {
 
 	class CommutingAsSum : virtual public property {
 		public:
-			virtual std::string name() const;
+			virtual std::string name() const override;
 		};
 
 	}

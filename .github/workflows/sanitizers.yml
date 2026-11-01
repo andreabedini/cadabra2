@@ -1,0 +1,70 @@
+# Build and test with sanitizers, to catch memory errors, undefined
+# behaviour and data races which a normal build hides.
+
+name: Sanitizers
+
+on: [push, pull_request]
+
+jobs:
+  asan-ubsan:
+    name: AddressSanitizer + UndefinedBehaviorSanitizer
+    runs-on: ubuntu-24.04
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: get dependencies
+      run: |
+        sudo apt-get update
+        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y ninja-build git cmake python3-dev g++ \
+          libgmp3-dev libgmp-dev libboost-all-dev libsqlite3-dev uuid-dev libmpfr-dev libmpc-dev \
+          libglibmm-2.68-dev libssl-dev catch2 python3-sympy python3-gmpy2 python3-numpy
+
+    - name: configure
+      run: |
+        mkdir build && cd build
+        cmake -G Ninja -DENABLE_MATHEMATICA=OFF -DENABLE_FRONTEND=OFF -DENABLE_PY_JUPYTER=OFF \
+              -DENABLE_SANITIZERS=address,undefined -DCADABRA_TEST_TIMEOUT=600 ..
+
+    - name: build
+      run: cd build && cmake --build .
+
+    - name: test
+      env:
+        CTEST_OUTPUT_ON_FAILURE: 1
+        # Python itself leaks at exit, so leak checking is off; every
+        # other error, including undefined behaviour, fails the test.
+        ASAN_OPTIONS: detect_leaks=0:abort_on_error=1
+        UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+      run: cd build && ctest -j 4
+
+  tsan:
+    name: ThreadSanitizer (client/server)
+    runs-on: ubuntu-24.04
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: get dependencies
+      run: |
+        sudo apt-get update
+        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y ninja-build cmake python3-dev g++ \
+          libgmp-dev libboost-all-dev libsqlite3-dev uuid-dev libglibmm-2.68-dev libssl-dev
+
+    - name: configure
+      run: |
+        mkdir build && cd build
+        cmake -G Ninja -DENABLE_MATHEMATICA=OFF -DENABLE_FRONTEND=OFF -DENABLE_PY_JUPYTER=OFF \
+              -DENABLE_SANITIZERS=thread ..
+
+    # The websocket threading test lives in client_server/test_websocket.cc;
+    # skip (rather than fail) on branches which do not have it yet.
+    - name: build and run websocket threading test
+      env:
+        TSAN_OPTIONS: halt_on_error=1
+      run: |
+        if [ ! -f client_server/test_websocket.cc ]; then
+          echo "client_server/test_websocket.cc not present, skipping."
+          exit 0
+        fi
+        cd build && cmake --build . --target test_websocket && ctest -R '^websocket$' --output-on-failure

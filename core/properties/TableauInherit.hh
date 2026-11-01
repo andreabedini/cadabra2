@@ -14,13 +14,13 @@ namespace cadabra {
 	class TableauInherit : virtual public TableauBase, virtual public property {
 		public:
 			virtual ~TableauInherit();
-			virtual std::string name() const
+			virtual std::string name() const override
 				{
 				return std::string("TableauInherit");
 				};
 
-			virtual unsigned int size(const Properties&, Ex&, Ex::iterator) const;
-			virtual tab_t        get_tab(const Properties&, Ex&, Ex::iterator, unsigned int) const;
+			virtual unsigned int size(const Properties&, Ex&, Ex::iterator) const override;
+			virtual tab_t        get_tab(const Properties&, Ex&, Ex::iterator, unsigned int) const override;
 			
 		};
 

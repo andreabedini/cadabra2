@@ -8,7 +8,7 @@ namespace cadabra {
 	class GammaTraceless : public property {
 		public:
 			virtual ~GammaTraceless() {};
-			virtual std::string name() const;
+			virtual std::string name() const override;
 		};
 
 	}

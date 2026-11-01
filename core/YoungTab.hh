@@ -69,11 +69,11 @@ namespace yngtab {
 			tableau(const tableau&);
 			
 			virtual ~tableau();
-			virtual unsigned int number_of_rows() const;
-			virtual unsigned int row_size(unsigned int row) const;
-			virtual void         add_box(unsigned int row);
-			virtual void         remove_box(unsigned int row);
-			virtual void         clear();
+			virtual unsigned int number_of_rows() const override;
+			virtual unsigned int row_size(unsigned int row) const override;
+			virtual void         add_box(unsigned int row) override;
+			virtual void         remove_box(unsigned int row) override;
+			virtual void         clear() override;
 
 			tableau& operator=(const tableau&);
 		private:
@@ -92,12 +92,12 @@ namespace yngtab {
 			filled_tableau(const filled_tableau<T>&);
 			
 			virtual ~filled_tableau();
-			virtual unsigned int number_of_rows() const;
-			virtual unsigned int row_size(unsigned int row) const;
-			virtual void         add_box(unsigned int row);
-			virtual void         remove_box(unsigned int row);
+			virtual unsigned int number_of_rows() const override;
+			virtual unsigned int row_size(unsigned int row) const override;
+			virtual void         add_box(unsigned int row) override;
+			virtual void         remove_box(unsigned int row) override;
 			std::pair<int, int>  find(const T&) const;
-			virtual void         clear();
+			virtual void         clear() override;
 
 			void                 copy_shape(const tableau&);
 

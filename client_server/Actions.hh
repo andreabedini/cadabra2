@@ -32,6 +32,7 @@ namespace cadabra {
 	class ActionBase {
 		public:
 			ActionBase(DataCell::id_t ref_id);
+			virtual ~ActionBase() = default;
 
 			/// Perform the action. This should update both the document
 			/// tree data structure and the GUI. The latter is updated

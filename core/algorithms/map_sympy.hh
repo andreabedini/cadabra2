@@ -15,8 +15,8 @@ namespace cadabra {
 		public:
 			map_sympy(const Kernel&, Ex&, const std::string& head, std::vector<std::string> args);
 
-			virtual bool     can_apply(iterator);
-			virtual result_t apply(iterator&);
+			virtual bool     can_apply(iterator) override;
+			virtual result_t apply(iterator&) override;
 
 		private:
 			std::string               head_;

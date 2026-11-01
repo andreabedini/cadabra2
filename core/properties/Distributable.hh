@@ -8,7 +8,7 @@ namespace cadabra {
 	class Distributable : virtual public  property {
 		public:
 			virtual ~Distributable() {};
-			virtual std::string name() const;
+			virtual std::string name() const override;
 		};
 
 	}

@@ -31,9 +31,9 @@ namespace cadabra {
 			/// and scan through the rule (with a basic replacement_map.find based on
 			/// simple tree comparison logic, not pattern matching) for replacements to be made.
 
-			virtual bool     can_apply(iterator st);
+			virtual bool     can_apply(iterator st) override;
 
-			virtual result_t apply(iterator&);
+			virtual result_t apply(iterator&) override;
 
 			Ex_comparator comparator;
 

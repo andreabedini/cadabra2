@@ -9,8 +9,8 @@ namespace cadabra {
 		public:
 			rename_dummies(const Kernel&, Ex&, std::string, std::string);
 
-			virtual bool     can_apply(iterator);
-			virtual result_t apply(iterator&);
+			virtual bool     can_apply(iterator) override;
+			virtual result_t apply(iterator&) override;
 
 		private:
 			std::string dset1, dset2;

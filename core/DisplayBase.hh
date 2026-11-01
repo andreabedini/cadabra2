@@ -18,6 +18,8 @@ namespace cadabra {
 
 	class DisplayBase {
 		public:
+			virtual ~DisplayBase() = default;
+
 			DisplayBase(const Kernel&, const Ex&);
 
 			void output(std::ostream&);

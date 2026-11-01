@@ -8,7 +8,7 @@ namespace cadabra {
 
 	class IndexInherit : virtual public property {
 		public:
-			virtual std::string name() const
+			virtual std::string name() const override
 				{
 				return std::string("IndexInherit");
 				};

@@ -15,6 +15,8 @@ namespace cadabra {
 
 	class GUIBase {
 		public:
+			virtual ~GUIBase() = default;
+
 			/// The basic manipulations that a GUI needs to implement are
 			/// adding, removing and updating (refreshing the display of)
 			/// a cell. The code in DocumentThread will call these to make

@@ -10,8 +10,8 @@ namespace cadabra {
 		public:
 			explicit_indices(const Kernel&, Ex&);
 
-			virtual bool     can_apply(iterator);
-			virtual result_t apply(iterator&);
+			virtual bool     can_apply(iterator) override;
+			virtual result_t apply(iterator&) override;
 
 		private:
 			IndexClassifier::index_map_t            ind_free_sum, ind_dummy_sum;

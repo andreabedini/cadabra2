@@ -256,6 +256,27 @@ else()
     message(STATUS "IPO / LTO not supported: <${error}>")
 endif()
 
+# Optional sanitizer build (GCC/Clang), e.g.
+#   -DENABLE_SANITIZERS=address,undefined   or   -DENABLE_SANITIZERS=thread
+# Used by the sanitizer CI workflow. When running the Python-based tests,
+# the sanitizer runtime has to be preloaded into the interpreter, see
+# .github/workflows/sanitizers.yml.
+set(ENABLE_SANITIZERS "" CACHE STRING "Comma-separated list of sanitizers to enable (e.g. address,undefined)")
+if(ENABLE_SANITIZERS)
+  if(MSVC)
+    message(FATAL_ERROR "ENABLE_SANITIZERS is only supported with GCC and Clang.")
+  endif()
+  message(STATUS "Building with -fsanitize=${ENABLE_SANITIZERS}")
+  set(SANITIZER_FLAGS "-fsanitize=${ENABLE_SANITIZERS} -fno-omit-frame-pointer")
+  set(CMAKE_C_FLAGS             "${CMAKE_C_FLAGS} ${SANITIZER_FLAGS}")
+  set(CMAKE_CXX_FLAGS           "${CMAKE_CXX_FLAGS} ${SANITIZER_FLAGS}")
+  set(CMAKE_EXE_LINKER_FLAGS    "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=${ENABLE_SANITIZERS}")
+  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -fsanitize=${ENABLE_SANITIZERS}")
+  set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} -fsanitize=${ENABLE_SANITIZERS}")
+  # LTO makes sanitizer builds slow and their reports harder to read.
+  set(IPO_SUPPORTED FALSE)
+endif()
+
 
 
 # GCC
@@ -269,7 +290,7 @@ if(CMAKE_COMPILER_IS_GNUCC OR CMAKE_COMPILER_IS_GNUCXX)
       set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-maybe-uninitialized")
     endif()
   endif()
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -O2 -Wall -Wextra -Wunused -Wno-psabi -Wno-unknown-pragmas -Wno-misleading-indentation -fvisibility=hidden -Wno-unused-but-set-variable -Wno-unused-parameter")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -O2 -Wall -Wextra -Wunused -Wno-psabi -Wno-unknown-pragmas -Wno-misleading-indentation -fvisibility=hidden -Wno-unused-but-set-variable -Wno-unused-parameter -Wnon-virtual-dtor -Wsuggest-override")
 endif()
 
 # Clang
@@ -278,7 +299,7 @@ if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
   if (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 3.5)
     message(FATAL_ERROR "Clang version must be at least 3.5 to avoid known bugs.")
   endif()
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -O2 -fvisibility=hidden -Wall -Wextra -Wunused -Wno-unused-parameter -Wno-null-pointer-subtraction")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -O2 -fvisibility=hidden -Wall -Wextra -Wunused -Wno-unused-parameter -Wno-null-pointer-subtraction -Wnon-virtual-dtor -Wsuggest-override")
 endif()
 
 # Visual Studio

@@ -107,15 +107,15 @@ namespace combin {
 			combinations(const std::vector<T>&);
 			virtual ~combinations();
 
-			virtual void           clear();
-			virtual void           clear_results();
+			virtual void           clear() override;
+			virtual void           clear_results() override;
 			const std::vector<T>&  operator[](unsigned int) const;
 			int                    ordersign(unsigned int) const;
 			unsigned int           size() const;
 			unsigned int           multiplier(unsigned int) const;
 
 		protected:
-			virtual void vector_generated(const std::vector<unsigned int>&);
+			virtual void vector_generated(const std::vector<unsigned int>&) override;
 
 		private:
 			permuted_sets_t storage;
@@ -128,26 +128,26 @@ namespace combin {
 	class symm_helper : public combinations_base<T> {
 		public:
 			symm_helper(symmetriser<T>&);
-			virtual void clear();
+			virtual void clear() override;
 
 			int             current_multiplicity;
 		protected:
 			bool            first_one;
 			symmetriser<T>& owner_;
-			virtual void vector_generated(const std::vector<unsigned int>&);
+			virtual void vector_generated(const std::vector<unsigned int>&) override;
 		};
 
 	template<class T>
 	class symm_val_helper : public combinations_base<T> {
 		public:
 			symm_val_helper(symmetriser<T>&);
-			virtual void clear();
+			virtual void clear() override;
 
 			int             current_multiplicity;
 		protected:
 			bool            first_one;
 			symmetriser<T>& owner_;
-			virtual void vector_generated(const std::vector<unsigned int>&);
+			virtual void vector_generated(const std::vector<unsigned int>&) override;
 		};
 
 	template<class T>

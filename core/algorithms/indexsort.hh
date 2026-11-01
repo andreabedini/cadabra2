@@ -9,8 +9,8 @@ namespace cadabra {
 		public:
 			indexsort(const Kernel&, Ex&);
 
-			virtual bool     can_apply(iterator);
-			virtual result_t apply(iterator&);
+			virtual bool     can_apply(iterator) override;
+			virtual result_t apply(iterator&) override;
 
 			class less_indexed_treenode {
 				public:

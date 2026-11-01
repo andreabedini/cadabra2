@@ -9,8 +9,8 @@ namespace cadabra {
 		public:
 			sort_product(const Kernel&, Ex&);
 
-			virtual bool     can_apply(iterator);
-			virtual result_t apply(iterator&);
+			virtual bool     can_apply(iterator) override;
+			virtual result_t apply(iterator&) override;
 
 			void dont_cleanup();
 
