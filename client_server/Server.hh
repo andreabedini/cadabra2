@@ -147,6 +147,9 @@ class Server {
 		// Basics for the working thread that processes blocks.
 		std::thread             runner;
 		std::mutex              block_available_mutex;
+		/// True while a block is executing; guarded by block_available_mutex.
+		/// Used to only interrupt Python when there is something to interrupt.
+		bool                    block_running=false;
 		std::condition_variable block_available;
 		bool                    exit_on_disconnect;
 		int                     run_on_port;
@@ -207,6 +210,7 @@ class Server {
 		/// further blocks that may still be on the queue.
 
 		void                     stop_block();
+		void                     set_block_running(bool);
 		bool                     started;
 		std::future<std::string> job;
 

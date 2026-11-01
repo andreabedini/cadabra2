@@ -387,6 +387,13 @@ void Server::wait_for_job()
 
 		current_block = block_queue.front();
 		block_queue.pop();
+
+		// Drop any interrupt left pending from a Stop request which came
+		// in after the previous block had already finished; otherwise this
+		// block would fail straight away with a KeyboardInterrupt.
+		if(PyErr_CheckSignals()!=0)
+			PyErr_Clear();
+		block_running=true;
 		lock.unlock();
 
 		server_stopwatch.reset();
@@ -401,6 +408,7 @@ void Server::wait_for_job()
 			current_id      = current_block.cell_id;
 			current_block.output    = run_string(current_block.input, true, true, current_block.remove_variable_assignments);
 			current_block.variables = run_string_variables;
+			set_block_running(false);
 			on_block_finished(current_block);
 			}
 		catch(std::runtime_error& ex) {
@@ -414,6 +422,7 @@ void Server::wait_for_job()
 #ifdef DEBUG
 			std::cerr << "Lock acquired" << std::endl;
 #endif
+			block_running=false;
 			std::queue<Block> empty;
 			std::swap(block_queue, empty);
 			lock.unlock();
@@ -426,6 +435,7 @@ void Server::wait_for_job()
 			server_stopwatch.stop();
 			// snoop::log(snoop::info) << "System exception" << snoop::flush;
 			lock.lock();
+			block_running=false;
 			std::queue<Block> empty;
 			std::swap(block_queue, empty);
 			lock.unlock();
@@ -438,9 +448,19 @@ void Server::wait_for_job()
 		}
 	}
 
+void Server::set_block_running(bool running)
+	{
+	std::lock_guard<std::mutex> lock(block_available_mutex);
+	block_running=running;
+	}
+
 void Server::stop_block()
 	{
-//	interrupt_block=true;
+	// Called with block_available_mutex held. Only interrupt Python when a
+	// block is actually running: a pending interrupt would otherwise make
+	// the next block fail immediately.
+	if(!block_running)
+		return;
 //	std::cerr << "Server: sending SIGINT to python thread." << std::endl;
 	PyErr_SetInterrupt();
 
@@ -484,7 +504,15 @@ void Server::on_message(websocket_server::id_type ws_id, const std::string& msg,
 
 	//	std::cout << "Message from " << it->second.uuid << std::endl;
 
-	dispatch_message(ws_id, msg);
+	// This runs on the websocket thread; an exception escaping from here
+	// would end that thread and with it the server. A message we cannot
+	// handle is dropped.
+	try {
+		dispatch_message(ws_id, msg);
+		}
+	catch(std::exception& ex) {
+		std::cerr << "Server: cannot handle message: " << ex.what() << std::endl;
+		}
 	}
 
 void Server::dispatch_message(websocket_server::id_type ws_id, const std::string& json_msg)
@@ -502,16 +530,27 @@ void Server::dispatch_message(websocket_server::id_type ws_id, const std::string
 		return;
 		}
 
-	// Check that this message is authenticated.
-	std::string auth_token = root.value("auth_token", "");
-	if(auth_token!=authentication_token) {
-		std::cerr << "Received block with incorrect authentication token: " << auth_token << "." << std::endl;
+	if(!root.is_object()) {
+		std::cerr << "Server: ignoring message which is not a JSON object." << std::endl;
 		return;
 		}
 
-	const auto& content    = root["content"];
-	const auto& header     = root["header"];
-	std::string msg_type = header["msg_type"].get<std::string>();
+	// Check that this message is authenticated.
+	std::string auth_token = root.value("auth_token", "");
+	if(auth_token!=authentication_token) {
+		std::cerr << "Received block with incorrect authentication token." << std::endl;
+		return;
+		}
+
+	// Copies, with missing parts treated as empty, so that nothing below
+	// accesses a key which is not there.
+	const nlohmann::json content = root.value("content", nlohmann::json::object());
+	const nlohmann::json header  = root.value("header",  nlohmann::json::object());
+	if(!content.is_object() || !header.is_object()) {
+		std::cerr << "Server: ignoring message with malformed header or content." << std::endl;
+		return;
+		}
+	std::string msg_type = header.value("msg_type", "");
 	// std::cerr << "received msg_type |" << msg_type << "|" << std::endl;
 
 	if(msg_type=="execute_request") {
@@ -550,15 +589,19 @@ void Server::dispatch_message(websocket_server::id_type ws_id, const std::string
 		}
 	else if(msg_type=="complete") {
 		// Schedule a block which runs code to complete the given string.
-		std::string str=root["string"].get<std::string>();
-		int alternative=root["alternative"].get<int>();
-		std::string todo="print(__cdbkernel__.completer.complete(\""+str+"\", "+std::to_string(alternative)+"))";
+		std::string str=root.value("string", "");
+		int alternative=root.value("alternative", 0);
+		// Pass the text to Python as a string literal. It is whatever the
+		// user typed, so it cannot be pasted in between quotes as-is; a
+		// JSON string literal is also a valid Python one.
+		std::string todo="print(__cdbkernel__.completer.complete("
+			+nlohmann::json(str).dump()+", "+std::to_string(alternative)+"))";
 
 		uint64_t id = header.value("cell_id", uint64_t(0));
 		Block blk(ws_id, todo, id, "completed");
 		blk.response["header"]["cell_id"]=id;
 		blk.response["content"]["original"]=str;
-		blk.response["content"]["position"]=root["position"].get<int>();
+		blk.response["content"]["position"]=root.value("position", 0);
 		blk.response["content"]["alternative"]=alternative;
 
 		std::unique_lock<std::mutex> lock(block_available_mutex);
