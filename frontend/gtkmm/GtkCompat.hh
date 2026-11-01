@@ -13,6 +13,7 @@
 /// it deliberately does *not* come from Config.hh, which is generated into the
 /// source tree and shared between build directories.
 
+#include <sigc++/sigc++.h>
 #include <gtkmm/box.h>
 #include <gtkmm/dialog.h>
 #include <gtkmm/messagedialog.h>
@@ -84,6 +85,21 @@
 #include <vector>
 
 namespace cdb {
+
+	/// Wrap a functor so that it is only called while `obj` is alive: the
+	/// slot is disconnected when obj (a sigc::trackable, such as any Gtk
+	/// widget) is destroyed. Use this for timeouts which refer to widgets.
+	/// sigc++ 3.4 renamed track_obj to track_object.
+	template<typename Functor, typename Obj>
+	auto track(Functor&& f, Obj& obj)
+		{
+#if SIGCXX_MAJOR_VERSION > 3 || (SIGCXX_MAJOR_VERSION == 3 && SIGCXX_MINOR_VERSION >= 4)
+		return sigc::track_object(std::forward<Functor>(f), obj);
+#else
+		return sigc::track_obj(std::forward<Functor>(f), obj);
+#endif
+		}
+
 
 	/// Unscoped gtkmm-3 enumerators became scoped enum classes in gtkmm-4, so
 	/// the spellings differ even though the values do not. Declared once here

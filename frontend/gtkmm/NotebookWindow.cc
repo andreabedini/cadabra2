@@ -1091,10 +1091,11 @@ void NotebookWindow::resize_codeinput_texview(DTree::iterator it, int width)
 				cdb::widget_size_allocate(tex_view->image, allocation);
 				
 				tex_view->queue_draw();
-				Glib::signal_timeout().connect_once([tex_view]()
+				// Tracked: the cell may be removed before the timeout fires.
+				Glib::signal_timeout().connect_once(cdb::track([tex_view]()
 						{
 						tex_view->queue_resize();
-						}, 50);
+						}, *tex_view), 50);
 				}
 			}
 		}
@@ -1846,9 +1847,11 @@ void NotebookWindow::position_cursor(const DTree& tr, DTree::iterator it, int po
 		// This box is not yet realised, which means that we cannot scroll to it either.
 		// Re-schedule the position action for later.
 		// std::cerr << "Reschedule" << std::endl;
-		Glib::signal_timeout().connect_once(  [this, &tr, it, pos]() {
+		// Tracked by the cell's input widget: if the cell is removed in the
+		// meantime, `it` no longer points to a valid node.
+		Glib::signal_timeout().connect_once(cdb::track([this, &tr, it, pos]() {
 			position_cursor(tr, it, pos);
-			}, 30);
+			}, *target.inbox), 30);
 		return;
 		}
 
@@ -2077,10 +2080,11 @@ bool NotebookWindow::cell_toggle_visibility(DTree::iterator it, int )
 					// width would be minimal). The hack below makes that
 					// problem go away. Similar to the hack used for
 					// hide followed by immediate show.
-					Glib::signal_timeout().connect_once([w]()
+					// Tracked: the cell may be removed before the timeout fires.
+					Glib::signal_timeout().connect_once(cdb::track([w]()
 							{
 							w->edit.queue_resize();							
-							}, 30);
+							}, *w), 30);
 					}
 				}
 			}
@@ -2238,7 +2242,8 @@ bool NotebookWindow::on_tex_error(const std::string& str, DTree::iterator it)
 			// Probably a bug: if we call show() without the delay below, we can have
 			// the hide() and show() happen very quickly after each other, which does not
 			// work (widget stays hidden).
-			Glib::signal_timeout().connect_once([&w]() { cdb::show_all(w); }, 50);
+			// Tracked: the cell may be removed before the timeout fires.
+			Glib::signal_timeout().connect_once(cdb::track([&w]() { cdb::show_all(w); }, w), 50);
 
 			pit->hidden=false;
 			}

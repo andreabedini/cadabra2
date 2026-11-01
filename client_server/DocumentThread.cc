@@ -300,7 +300,12 @@ void DocumentThread::process_action_queue()
 	stack_mutex.lock();
 	while(pending_actions.size()>0) {
 		// std::cerr << "pending_actions.size() == " << pending_actions.size() << std::endl;
+		// Take the action off the queue before running it. It used to stay
+		// at the front and be popped afterwards; but an action can clear
+		// the queue (loading a notebook does) and queue new actions, and
+		// the pop afterwards then removed one of those instead.
 		std::shared_ptr<ActionBase> ab = pending_actions.front();
+		pending_actions.pop();
 		// Unlock the action queue while we are processing this particular action,
 		// so that other actions can be added which we run.
 		stack_mutex.unlock();
@@ -321,8 +326,6 @@ void DocumentThread::process_action_queue()
 			undo_stack.push(ab);
 		if(ab->callback != nullptr)
 			ab->callback();
-		if(pending_actions.size()>0) // some actions clear the queue
-			pending_actions.pop();
 		}
 	stack_mutex.unlock();
 	}

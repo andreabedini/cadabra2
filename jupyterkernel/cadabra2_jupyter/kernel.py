@@ -48,26 +48,26 @@ class CadabraJupyterKernel(ipykernel.kernelbase.Kernel):
         if not code.strip():
             return self._status_ok
 
-        interrupted = False
-
         try:
-            #  main execution calls
+            #  main execution calls
             errstr = ""
             pycode = self._parse_cadabra(code, True, errstr)
             self._execute_python(pycode)
 
         except KeyboardInterrupt:
-            interrupted = True
+            # Reported as an error, like ipykernel does ("abort" is not a
+            # valid execute_reply status).
+            return self._status_error("KeyboardInterrupt", "", [])
 
         except Exception as e:
             # get traceback; not massively informative but can be useful
             err_str = traceback.format_exc()
             self._send_error(err_str)
+            # Report the failure to the frontend: with status "ok", "Run All"
+            # carried on with the following cells as if nothing happened.
+            return self._status_error(type(e).__name__, str(e), err_str.splitlines())
 
-        if interrupted:
-            return {"status": "abort", "execution_count": self.execution_count}
-        else:
-            return self._status_ok
+        return self._status_ok
 
     def do_complete(self, code, cursor_pos):
         """ callback for iPython kernel: code completion """
@@ -86,6 +86,15 @@ class CadabraJupyterKernel(ipykernel.kernelbase.Kernel):
             "cursor_end": cursor_pos,
             "status": "ok",
             "metadata": dict(),
+        }
+
+    def _status_error(self, ename, evalue, tb):
+        return {
+            "status": "error",
+            "ename": ename,
+            "evalue": evalue,
+            "traceback": tb,
+            "execution_count": self.execution_count,
         }
 
     @property
