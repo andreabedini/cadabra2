@@ -99,13 +99,6 @@ std::string safestring(const unsigned char *c)
 
 Snoop::Snoop()
    : sync_immediately_(false)
-	, db(0)
-	, payload_db(0)
-	, auth_db(0)
-	, insert_statement(0)
-	, id_for_uuid_statement(0)
-	, payload_insert_statement(0)
-	, testq_statement(0)
 	, connection_is_open(false)
 	, connection_attempt_failed(false)
    {
@@ -198,7 +191,7 @@ void Snoop::init(const std::string& app_name, const std::string& app_version, st
 			}
 
 		// Open the main database.
-		int ret = sqlite3_open_v2(dbname.c_str(), &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL);
+		int ret = sqlite3_open_v2(dbname.c_str(), db.out(), SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL);
 		if(ret) 
 			throw std::logic_error("Snoop::init: Cannot open main snoop database");
 		SNOOPDEBUG( std::cerr << "Snoop::init: main snoop database '" << dbname << "' open" << std::endl; );
@@ -207,7 +200,7 @@ void Snoop::init(const std::string& app_name, const std::string& app_version, st
 		sqlite3_exec(db, "PRAGMA busy_timeout = 5000", NULL, NULL, NULL);
 
 		// Open the payload database.
-		ret = sqlite3_open_v2(payload_dbname.c_str(), &payload_db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL);
+		ret = sqlite3_open_v2(payload_dbname.c_str(), payload_db.out(), SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL);
 		if(ret) 
 			throw std::logic_error("Snoop::init: Cannot open payload database");
 		SNOOPDEBUG( std::cerr << "Snoop::init: payload database open" << std::endl; );
@@ -220,7 +213,7 @@ void Snoop::init(const std::string& app_name, const std::string& app_version, st
 		SNOOPDEBUG( std::cerr << "Snoop::init: logging and payload tables created" << std::endl; );
 
 		// Open the auth database.
-		ret = sqlite3_open_v2(auth_dbname.c_str(), &auth_db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL);
+		ret = sqlite3_open_v2(auth_dbname.c_str(), auth_db.out(), SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL);
 		if(ret) 
 			throw std::logic_error("Snoop::init: Cannot open authentication database");
 		SNOOPDEBUG( std::cerr << "Snoop::init: auth database open" << std::endl; );
@@ -522,12 +515,12 @@ void Snoop::obtain_uuid()
 
 	std::lock_guard<std::recursive_mutex> lock(sqlite_mutex);
 
-	sqlite3_stmt *statement=0;
+	sqlite_statement statement;
 	std::ostringstream ss;
 //	ss << "select uuid from runs where pid=" << getpid() << " order by create_millis desc limit 1";
 	ss << "select uuid from runs where pid=" << getpid() << " order by create_millis desc limit 1";
 	
-	int res = sqlite3_prepare(db, ss.str().c_str(), -1, &statement, NULL);
+	int res = sqlite3_prepare(db, ss.str().c_str(), -1, statement.out(), NULL);
 	if(res==SQLITE_OK) {
 		int ret = sqlite3_step(statement);
 		if(ret==SQLITE_ROW) {
@@ -536,7 +529,7 @@ void Snoop::obtain_uuid()
 			else throw std::logic_error("Database inconsistency for obtain_uuid");
 			}
 		}
-	sqlite3_finalize(statement);
+	statement.reset();
 
 	// Generate and insert a new uuid if there is no existing entry for the current pid.
 
@@ -568,12 +561,12 @@ std::string Snoop::last_seen_version(std::string machine_id)
 
 	std::lock_guard<std::recursive_mutex> lock(sqlite_mutex);
 
-	sqlite3_stmt *statement=0;
+	sqlite_statement statement;
 	std::ostringstream ss;
 	ss << "select app_version from runs where machine_id=? order by id desc limit 1";
 
 	std::string last_version="";
-	int res = sqlite3_prepare(db, ss.str().c_str(), -1, &statement, NULL);
+	int res = sqlite3_prepare(db, ss.str().c_str(), -1, statement.out(), NULL);
 	if(res==SQLITE_OK) {
 		sqlite3_bind_text(statement, 1, machine_id.c_str(), machine_id.size(), 0);
 		int ret = sqlite3_step(statement);
@@ -582,7 +575,7 @@ std::string Snoop::last_seen_version(std::string machine_id)
 				last_version=safestring(sqlite3_column_text(statement, 0));
 			}
 		}
-	sqlite3_finalize(statement);
+	statement.reset();
 
 	return last_version;
 	}
@@ -671,10 +664,10 @@ std::string Snoop::get_local_ticket()
 	// queries for the ticket with user number 0 (as the local
 	// client storage does not store user details). 
 
-	sqlite3_stmt *statement=0;
+	sqlite_statement statement;
 	std::ostringstream ss;
 	ss << "select ticket_uuid from tickets where user_id=0 and valid=1";
-	int res = sqlite3_prepare(auth_db, ss.str().c_str(), -1, &statement, NULL);
+	int res = sqlite3_prepare(auth_db, ss.str().c_str(), -1, statement.out(), NULL);
 	if(res!=SQLITE_OK)
 		return "";
 
@@ -683,7 +676,7 @@ std::string Snoop::get_local_ticket()
 	if(ret==SQLITE_ROW) {
 		ticket_uuid=safestring(sqlite3_column_text(statement, 0));		
 		}
-	sqlite3_finalize(statement);
+	statement.reset();
 
 	return ticket_uuid;
    }
@@ -693,9 +686,9 @@ void Snoop::set_local_ticket(std::string ticket_uuid)
    // First delete local ticket.
    
    std::ostringstream ss;
-	sqlite3_stmt *statement=0;   
+	sqlite_statement statement;
    ss << "delete from tickets";
-   int res = sqlite3_prepare(auth_db, ss.str().c_str(), -1, &statement, NULL);
+   int res = sqlite3_prepare(auth_db, ss.str().c_str(), -1, statement.out(), NULL);
    if(res!=SQLITE_OK)
 	   throw std::logic_error("Snoop::delete_local_ticket: sqlite3_prepare failed error "+std::to_string(res));
    
@@ -703,7 +696,7 @@ void Snoop::set_local_ticket(std::string ticket_uuid)
    if(res!=SQLITE_DONE)
 	   throw std::logic_error("Snoop::store_ticket: sqlite3_step failed error "+std::to_string(res));
 
-   sqlite3_finalize(statement);
+   statement.reset();
    
    // Now store.
    if(ticket_uuid.size()!=0)
@@ -727,10 +720,10 @@ Snoop::Ticket Snoop::is_ticket_valid(std::string ticket_uuid)
 	tret.ticket_uuid=ticket_uuid;
 	tret.valid = false;
 	
-	sqlite3_stmt *statement=0;
+	sqlite_statement statement;
 	std::ostringstream ss;
 	ss << "select valid, users.enabled, ifnull(groups.enabled,1) as groupsenabled, tickets.id, users.id from tickets join users on tickets.user_id=users.id left join groups on users.\"group\"=groups.id where ticket_uuid=?";
-	int res = sqlite3_prepare(auth_db, ss.str().c_str(), -1, &statement, NULL);
+	int res = sqlite3_prepare(auth_db, ss.str().c_str(), -1, statement.out(), NULL);
 	if(res != SQLITE_OK) 
 		return tret;
 
@@ -749,7 +742,7 @@ Snoop::Ticket Snoop::is_ticket_valid(std::string ticket_uuid)
 	  tret.ticket_id=sqlite3_column_int(statement, 3);
 	  tret.user_id=sqlite3_column_int(statement, 4);	  
 	}
-	sqlite3_finalize(statement);
+	statement.reset();
 
 	tret.valid = (valid==1 && enabled==1 && groupsenabled==1);
 	
@@ -761,9 +754,9 @@ int Snoop::store_ticket(std::string ticket_uuid, int user_id, bool valid)
    assert(auth_db!=0);
 
    std::ostringstream ss;
-	sqlite3_stmt *statement=0;   
+	sqlite_statement statement;
    ss << "insert into tickets (user_id, ticket_uuid, valid) values (?, ?, ?)";
-   int res = sqlite3_prepare(auth_db, ss.str().c_str(), -1, &statement, NULL);
+   int res = sqlite3_prepare(auth_db, ss.str().c_str(), -1, statement.out(), NULL);
    if(res!=SQLITE_OK)
 	   throw std::logic_error("Snoop::store_ticket: sqlite3_prepare failed error "+std::to_string(res));
    
@@ -774,7 +767,7 @@ int Snoop::store_ticket(std::string ticket_uuid, int user_id, bool valid)
    if(res!=SQLITE_DONE)
 	   throw std::logic_error("Snoop::store_ticket: sqlite3_step failed error "+std::to_string(res));
 
-   sqlite3_finalize(statement);
+   statement.reset();
 	return sqlite3_last_insert_rowid(auth_db);	
    }
 
@@ -790,24 +783,24 @@ bool Snoop::store_app_entry(Snoop::AppEntry& app)
 bool Snoop::store_app_entry_without_lock(Snoop::AppEntry& app)
 	{
 	// Do we already have a record with this uuid?
-	sqlite3_stmt *testq=0;
-	int testq_res = sqlite3_prepare(db, "select count(*) from runs where uuid=?", -1, &testq, NULL);
+	sqlite_statement testq;
+	int testq_res = sqlite3_prepare(db, "select count(*) from runs where uuid=?", -1, testq.out(), NULL);
 	if(testq_res!=SQLITE_OK) 
 		throw std::logic_error("Snoop::store_app_entry_without_lock: failed to test for row presence");
 
 	sqlite3_bind_text(testq, 1, app.uuid.c_str(), app.uuid.size(), 0);
 	sqlite3_step(testq);
 	int64_t num = sqlite3_column_int64(testq, 0);
-	sqlite3_finalize(testq);
+	testq.reset();
 	if(num>0) 
 		return false;
 	
 	// No entry yet, we need to store it.
-	sqlite3_stmt *statement=0;
+	sqlite_statement statement;
 	int res = sqlite3_prepare(db, "insert into runs (uuid, create_millis, receive_millis, pid, ip_address, machine_id, "
 									  "app_name, app_version, user_id, server_status, create_timezone) "
 									  "values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-									  -1, &statement, NULL);
+									  -1, statement.out(), NULL);
 	
 	if(res==SQLITE_OK) {
 		sqlite3_bind_text(statement,   1, app.uuid.c_str(), app.uuid.size(), 0);
@@ -824,7 +817,7 @@ bool Snoop::store_app_entry_without_lock(Snoop::AppEntry& app)
 		sqlite3_bind_int(statement,   11, app.create_timezone);
 
 		sqlite3_step(statement);
-		sqlite3_finalize(statement);
+		statement.reset();
 
 		app.id = sqlite3_last_insert_rowid(db);
 
@@ -847,7 +840,7 @@ bool Snoop::store_log_entry(Snoop::LogEntry& log_entry, bool avoid_server_duplic
 		// Do we already have a record with this client_log_id and id?
 		if(testq_statement==0) {
 			int testq_res = sqlite3_prepare(db, "select exists (select 1 from (select client_log_id from logs where id=?) where client_log_id=?)",
-													  -1, &testq_statement, NULL);
+													  -1, testq_statement.out(), NULL);
 			if(testq_res!=SQLITE_OK) 
 				throw std::logic_error("Snoop::store_log_entry_without_lock: failed to prepare query for duplicate check");
 			}
@@ -874,7 +867,7 @@ bool Snoop::store_log_entry(Snoop::LogEntry& log_entry, bool avoid_server_duplic
 									  "(client_log_id, id, create_millis, receive_millis, loc_file, loc_line, loc_method, "
 									  " type, message, server_status, session_uuid, create_timezone) "
 									  "values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-									  -1, &insert_statement, NULL);
+									  -1, insert_statement.out(), NULL);
 		}
 
 	if(res==SQLITE_OK ) {
@@ -907,10 +900,10 @@ bool Snoop::store_auth_attempt_entry(int user_id, int ticket_id, int valid, std:
 	{
 	std::lock_guard<std::recursive_mutex> lock(sqlite_mutex);
 
-	sqlite3_stmt *statement=0;
+	sqlite_statement statement;
 	int res = sqlite3_prepare(auth_db, "insert into auth_attempts (time_millis, user_id, ticket_id, success, msg) "
 									  "values (?, ?, ?, ?, ?)",
-									  -1, &statement, NULL);
+									  -1, statement.out(), NULL);
 
 	auto duration =  std::chrono::system_clock::now().time_since_epoch();
 	uint64_t time_millis = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
@@ -923,7 +916,7 @@ bool Snoop::store_auth_attempt_entry(int user_id, int ticket_id, int valid, std:
 		sqlite3_bind_text(statement,   5, msg.c_str(), msg.size(), 0);		
 		
 		sqlite3_step(statement);
-		sqlite3_finalize(statement);
+		statement.reset();
 
 		return true;
 		}
@@ -939,8 +932,8 @@ bool Snoop::store_payload_entry(Snoop::PayLoad& payload)
 	std::lock_guard<std::recursive_mutex> lock(sqlite_mutex);
 
 	// Payload can be large, so we always first check if we have this entry already.
-	sqlite3_stmt *testq=0;
-	int testq_res = sqlite3_prepare(payload_db, "select count(*) from payload where client_payload_id=? and id=? and client_payload_id!=-1", -1, &testq, NULL);
+	sqlite_statement testq;
+	int testq_res = sqlite3_prepare(payload_db, "select count(*) from payload where client_payload_id=? and id=? and client_payload_id!=-1", -1, testq.out(), NULL);
 	if(testq_res!=SQLITE_OK) 
 		throw std::logic_error("Snoop::store_payload_entry_without_lock: failed to test for row presence");
 	
@@ -948,7 +941,7 @@ bool Snoop::store_payload_entry(Snoop::PayLoad& payload)
 	sqlite3_bind_int64(testq, 2, payload.id);
 	sqlite3_step(testq);
 	int64_t num = sqlite3_column_int64(testq, 0);
-	sqlite3_finalize(testq);
+	testq.reset();
 	if(num>0) {
 		SNOOPDEBUG( std::cerr << "Already have payload with client_payload_id=" << payload.client_payload_id << " and id=" << payload.id << std::endl; );
 	  return false;
@@ -962,7 +955,7 @@ bool Snoop::store_payload_entry(Snoop::PayLoad& payload)
 		res=sqlite3_prepare_v2(payload_db, "insert into payload "
 									  "(client_payload_id, id, create_millis, receive_millis, payload, server_status, create_timezone) "
 									  "values (?, ?, ?, ?, ?, ?, ?)",
-									  -1, &payload_insert_statement, NULL);
+									  -1, payload_insert_statement.out(), NULL);
 		}
 
 	if(res==SQLITE_OK ) {
@@ -1061,14 +1054,14 @@ void Snoop::sync_runs_with_server(bool from_wsthread)
 	// Create a JSON text with all locally stored entries which have
 	// a server_status field negative or zero.
 
-	sqlite3_stmt *statement=0;
+	sqlite_statement statement;
 	std::ostringstream ssc;
 	std::ostringstream pack;
 	pack << "{ \"run\": [";
 	ssc << "select id, uuid, create_millis, receive_millis, pid, ip_address, machine_id, app_name, app_version, user_id, server_status, create_timezone "
 		 << "from runs where server_status=0";
 
-	int sres = sqlite3_prepare(db, ssc.str().c_str(), -1, &statement, NULL);
+	int sres = sqlite3_prepare(db, ssc.str().c_str(), -1, statement.out(), NULL);
 	if(sres==SQLITE_OK) {
 		bool first=true;
 		bool go=true;
@@ -1106,7 +1099,7 @@ void Snoop::sync_runs_with_server(bool from_wsthread)
 			}
 		}
 	pack << "] }";
-	sqlite3_finalize(statement);
+	statement.reset();
 
 	// Before we upload, decrease the server_status flag of all these
 	// rows to indicate that we have started an attempt to get the info
@@ -1114,13 +1107,13 @@ void Snoop::sync_runs_with_server(bool from_wsthread)
 
 	ssc.str("");
 	ssc << "update runs set server_status=server_status-1 where server_status=0";
-	sres = sqlite3_prepare(db, ssc.str().c_str(), -1, &statement, NULL);
+	sres = sqlite3_prepare(db, ssc.str().c_str(), -1, statement.out(), NULL);
 	if(sres==SQLITE_OK) {
 		sqlite3_step(statement);
-		sqlite3_finalize(statement);
+		statement.reset();
 		}
 	else {
-		sqlite3_finalize(statement);
+		statement.reset();
 		return;
 		}
 
@@ -1140,7 +1133,7 @@ void Snoop::sync_logs_with_server(bool from_wsthread)
 	// Create a JSON text with all locally stored entries which have
 	// a server_status field negative or zero.
 
-	sqlite3_stmt *statement=0;
+	sqlite_statement statement;
 	std::ostringstream ssc;
 	std::ostringstream pack;
 	pack << "{ \"log\": [";
@@ -1158,7 +1151,7 @@ void Snoop::sync_logs_with_server(bool from_wsthread)
 		ssc << ")";
 		}
 
-	int sres = sqlite3_prepare(db, ssc.str().c_str(), -1, &statement, NULL);
+	int sres = sqlite3_prepare(db, ssc.str().c_str(), -1, statement.out(), NULL);
 	if(sres==SQLITE_OK) {
 		bool first=true;
 		bool go=true;
@@ -1197,7 +1190,7 @@ void Snoop::sync_logs_with_server(bool from_wsthread)
 			}
 		}
 	pack << "] }";
-	sqlite3_finalize(statement);
+	statement.reset();
 
 	// Before we upload, decrease the server_status flag of all these
 	// rows to indicate that we have started an attempt to get the info
@@ -1205,13 +1198,13 @@ void Snoop::sync_logs_with_server(bool from_wsthread)
 
 	ssc.str("");
 	ssc << "update logs set server_status=server_status-1 where server_status=0";
-	sres = sqlite3_prepare(db, ssc.str().c_str(), -1, &statement, NULL);
+	sres = sqlite3_prepare(db, ssc.str().c_str(), -1, statement.out(), NULL);
 	if(sres==SQLITE_OK) {
 		sqlite3_step(statement);
-		sqlite3_finalize(statement);
+		statement.reset();
 		}
 	else {
-		sqlite3_finalize(statement);
+		statement.reset();
 		return;
 		}
 
@@ -1238,14 +1231,14 @@ void Snoop::sync_payloads_with_server(bool from_wsthread)
 
 	// std::cerr << "Syncing payloads" << std::endl;
 	
-	sqlite3_stmt *statement=0;
+	sqlite_statement statement;
 	std::ostringstream ssc;
 	std::ostringstream pack;
 	pack << "{ \"payload\": [";
 	ssc << "select payload_id, client_payload_id, id, create_millis, payload, server_status, create_timezone "
 		 << "from payload where server_status=0";
 
-	int sres = sqlite3_prepare(payload_db, ssc.str().c_str(), -1, &statement, NULL);
+	int sres = sqlite3_prepare(payload_db, ssc.str().c_str(), -1, statement.out(), NULL);
 	if(sres==SQLITE_OK) {
 		bool first=true;
 		bool go=true;
@@ -1281,7 +1274,7 @@ void Snoop::sync_payloads_with_server(bool from_wsthread)
 		throw std::logic_error("Failed to prepare statement for payload select");
 		}
 	pack << "] }";
-	sqlite3_finalize(statement);
+	statement.reset();
 
 	// Before we upload, decrease the server_status flag of all these
 	// rows to indicate that we have started an attempt to get the info
@@ -1289,13 +1282,13 @@ void Snoop::sync_payloads_with_server(bool from_wsthread)
 
 	ssc.str("");
 	ssc << "update payload set server_status=server_status-1 where server_status=0";
-	sres = sqlite3_prepare(payload_db, ssc.str().c_str(), -1, &statement, NULL);
+	sres = sqlite3_prepare(payload_db, ssc.str().c_str(), -1, statement.out(), NULL);
 	if(sres==SQLITE_OK) {
 		sqlite3_step(statement);
-		sqlite3_finalize(statement);
+		statement.reset();
 		}
 	else {
-		sqlite3_finalize(statement);
+		statement.reset();
 		return;
 		}
 
@@ -1314,7 +1307,7 @@ std::vector<Snoop::AppEntry> Snoop::get_app_registrations(std::string uuid_filte
 	
 	std::lock_guard<std::recursive_mutex> lock(sqlite_mutex);
 
-	sqlite3_stmt *statement=0;
+	sqlite_statement statement;
 
 	std::ostringstream ssc;
 	ssc << "select id, uuid, create_millis, receive_millis, pid, ip_address, machine_id, "
@@ -1322,7 +1315,7 @@ std::vector<Snoop::AppEntry> Snoop::get_app_registrations(std::string uuid_filte
 	if(uuid_filter.size()>0) 
 		ssc << " where uuid=?";
 
-	int sres = sqlite3_prepare(db, ssc.str().c_str(), -1, &statement, NULL);
+	int sres = sqlite3_prepare(db, ssc.str().c_str(), -1, statement.out(), NULL);
 	if(uuid_filter.size()>0) 
 		sqlite3_bind_text(statement, 1, uuid_filter.c_str(), uuid_filter.size(), 0);
 
@@ -1358,7 +1351,7 @@ std::vector<Snoop::AppEntry> Snoop::get_app_registrations(std::string uuid_filte
 		}
 	else throw std::logic_error("Failed to prepare statement for get_app_registrations");
 
-	sqlite3_finalize(statement);
+	statement.reset();
 
 	sw.stop();
 	// This is now fast because we have added an index on `uuid`.
@@ -1454,10 +1447,10 @@ void Snoop::on_client_message(const std::string& msg)
 			
 			sqlite3_exec(db, "BEGIN TRANSACTION", NULL, NULL, NULL);
 
-			sqlite3_stmt *statement=0;
+			sqlite_statement statement;
 			std::ostringstream ssc;
 			ssc << "update logs set server_status=1 where log_id=?";
-			int ret = sqlite3_prepare(db, ssc.str().c_str(), -1, &statement, NULL);
+			int ret = sqlite3_prepare(db, ssc.str().c_str(), -1, statement.out(), NULL);
 			if(ret!=SQLITE_OK) 
 				throw std::logic_error("Failed to prepare statement for on_client_message");
 		
@@ -1467,7 +1460,7 @@ void Snoop::on_client_message(const std::string& msg)
 				sqlite3_step(statement);
 				sqlite3_reset(statement);
 				}
-			sqlite3_finalize(statement);
+			statement.reset();
 
 			sqlite3_exec(db, "END TRANSACTION", NULL, NULL, NULL);
 			}
@@ -1481,10 +1474,10 @@ void Snoop::on_client_message(const std::string& msg)
 
 			sqlite3_exec(db, "BEGIN TRANSACTION", NULL, NULL, NULL);
 
-			sqlite3_stmt *statement=0;
+			sqlite_statement statement;
 			std::ostringstream ssc;
 			ssc << "update runs set server_status=1 where id=?";
-			int ret = sqlite3_prepare(db, ssc.str().c_str(), -1, &statement, NULL);
+			int ret = sqlite3_prepare(db, ssc.str().c_str(), -1, statement.out(), NULL);
 			if(ret!=SQLITE_OK) 
 				throw std::logic_error("Failed to prepare statement for on_client_message");
 		
@@ -1494,7 +1487,7 @@ void Snoop::on_client_message(const std::string& msg)
 				sqlite3_step(statement);
 				sqlite3_reset(statement);
 				}
-			sqlite3_finalize(statement);
+			statement.reset();
 
 			sqlite3_exec(db, "END TRANSACTION", NULL, NULL, NULL);
 			}
@@ -1506,10 +1499,10 @@ void Snoop::on_client_message(const std::string& msg)
 
 			sqlite3_exec(payload_db, "BEGIN TRANSACTION", NULL, NULL, NULL);
 
-			sqlite3_stmt *statement=0;
+			sqlite_statement statement;
 			std::ostringstream ssc;
 			ssc << "update payload set server_status=1 where id=?";
-			int ret = sqlite3_prepare(payload_db, ssc.str().c_str(), -1, &statement, NULL);
+			int ret = sqlite3_prepare(payload_db, ssc.str().c_str(), -1, statement.out(), NULL);
 			if(ret!=SQLITE_OK) 
 				throw std::logic_error("Failed to prepare statement for on_client_message");
 		
@@ -1519,7 +1512,7 @@ void Snoop::on_client_message(const std::string& msg)
 				sqlite3_step(statement);
 				sqlite3_reset(statement);
 				}
-			sqlite3_finalize(statement);
+			statement.reset();
 
 			sqlite3_exec(payload_db, "END TRANSACTION", NULL, NULL, NULL);
 			}
@@ -1570,20 +1563,17 @@ Snoop::~Snoop()
 			}
 		}
 
-	if(insert_statement!=0) {
-		sqlite3_finalize(insert_statement);
-		}
-	if(id_for_uuid_statement!=0) {
-		sqlite3_finalize(id_for_uuid_statement);
-		}
-	if(db!=0) {
-		sqlite3_close(db);
-		db=0;
-		}
-	if(payload_db!=0) {
-		sqlite3_close(payload_db);
-		payload_db=0;
-		}
+	// Finalize all statements before closing the databases (an open
+	// statement keeps sqlite3_close from releasing the connection). This
+	// also covers payload_insert_statement, testq_statement and auth_db,
+	// which used to be left open.
+	insert_statement.reset();
+	id_for_uuid_statement.reset();
+	payload_insert_statement.reset();
+	testq_statement.reset();
+	db.reset();
+	payload_db.reset();
+	auth_db.reset();
    }
 
 void Snoop::set_local_type(const std::string& t)
@@ -1899,15 +1889,15 @@ bool Snoop::add_user(std::string user, std::string password, bool single)
 			}
 		}
 	
-	sqlite3_stmt *statement=0;
+	sqlite_statement statement;
 	std::ostringstream ss;
 	ss << "insert into users (username, password) values (?,?)";
-	int res = sqlite3_prepare(auth_db, ss.str().c_str(), -1, &statement, NULL);
+	int res = sqlite3_prepare(auth_db, ss.str().c_str(), -1, statement.out(), NULL);
 	assert(res==SQLITE_OK);
 	sqlite3_bind_text(statement, 1, user.c_str(), user.size(), 0);
 	sqlite3_bind_text(statement, 2, outbuf, strlen(outbuf), 0);		
 	res=sqlite3_step(statement);
-	sqlite3_finalize(statement);
+	statement.reset();
 
 	if(res!=SQLITE_DONE) {
 		SNOOPDEBUG( std::cerr << "Snoop::add_user: error " << sqlite3_errmsg(db) << std::endl; )
@@ -1921,9 +1911,9 @@ std::string Snoop::local_user() const
 	{
 	std::string name="";
 
-	sqlite3_stmt *statement=0;
+	sqlite_statement statement;
 	std::ostringstream ss;
-	int res = sqlite3_prepare(auth_db, "select username from users where username!=\"\"", -1, &statement, NULL);
+	int res = sqlite3_prepare(auth_db, "select username from users where username!=\"\"", -1, statement.out(), NULL);
 	if(res!=SQLITE_OK)
 		return "";
 	
@@ -1936,7 +1926,7 @@ std::string Snoop::local_user() const
 		SNOOPDEBUG( std::cerr << "Snoop::init: no localUser set (yet)" << std::endl; );		
 		}
 	
-	sqlite3_finalize(statement);
+	statement.reset();
 	return name;
 	}
 

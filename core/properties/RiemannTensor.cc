@@ -51,7 +51,7 @@ void RiemannTensor::validate(Kernel& kernel, std::shared_ptr<Ex> pat) const
 		sib->fl.parent_rel = (upper==4 ? str_node::p_sub : str_node::p_super);
 		++sib;
 		}
-	kernel.properties.master_insert(*ex_other, new RiemannTensor());
+	kernel.properties.master_insert(*ex_other, std::make_shared<RiemannTensor>());
 	}
 
 

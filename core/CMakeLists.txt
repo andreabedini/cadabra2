@@ -474,6 +474,20 @@ else()
       test_multiplier.cc
       Multiplier.cc
     )
+    add_executable(test_properties
+      test_properties.cc
+    )
+    target_link_libraries(test_properties PRIVATE
+      cadabra2
+      ${GMPXX_LIBRARIES}
+      ${GMP_LIBRARIES}
+      ${Python_LIBRARIES}
+      PRIVATE Catch2::Catch2WithMain
+    )
+    set_target_properties(test_properties PROPERTIES
+      RPATH "${CMAKE_CURRENT_BINARY_DIR}"
+    )
+    catch_discover_tests(test_properties DL_PATHS "${CMAKE_CURRENT_BINARY_DIR}")
     target_link_libraries(test_internals PRIVATE
       cadabra2
       ${GMPXX_LIBRARIES}

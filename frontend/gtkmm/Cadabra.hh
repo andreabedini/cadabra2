@@ -1,6 +1,8 @@
 
 #pragma once
 
+#include <memory>
+
 #include <gtkmm/application.h>
 #include <gtkmm/grid.h>
 #include "NotebookWindow.hh"
@@ -28,11 +30,13 @@ class Cadabra : public Gtk::Application {
 		virtual int on_command_line(const Glib::RefPtr<Gio::ApplicationCommandLine>& cmd) override;
 
 	private:
-		cadabra::ComputeThread                *compute;
-		std::thread                           *compute_thread;
+		// Destroyed in ~Cadabra in a specific order (stop, join, delete),
+		// so that no thread outlives the object it runs on.
+		std::unique_ptr<cadabra::ComputeThread> compute;
+		std::unique_ptr<std::thread>            compute_thread;
 
-		cadabra::ScriptThread                 *script;
-		std::thread                           *script_thread;
+		std::unique_ptr<cadabra::ScriptThread>  script;
+		std::unique_ptr<std::thread>            script_thread;
 
 		int server_port;
 		std::string server_token;

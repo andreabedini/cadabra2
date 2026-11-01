@@ -70,8 +70,8 @@ namespace cadabra {
 
 	}
 
-	BoundPropertyBase::BoundPropertyBase(const property* prop, Ex_ptr for_obj)
-		: prop(prop)
+	BoundPropertyBase::BoundPropertyBase(std::shared_ptr<const property> prop, Ex_ptr for_obj)
+		: prop(std::move(prop))
 		, for_obj(for_obj)
 	{
 
@@ -103,7 +103,7 @@ namespace cadabra {
 		prop->latex(str);
 		std::string bare = Ex_as_latex(for_obj);
 
-		if (dynamic_cast<const LaTeXForm*>(prop)) {
+		if (dynamic_cast<const LaTeXForm*>(prop.get())) {
 			// Since the LaTeXForm property has already been attached, the
 			// Ex_as_latex call above will replace the original symbol and
 			// replace it with the LaTeXForm. But we want to show the original
@@ -157,8 +157,8 @@ namespace cadabra {
 	}
 
 	template <typename PropT, typename... ParentTs>
-	BoundProperty<PropT, ParentTs...>::BoundProperty(const PropT* prop, Ex_ptr for_obj)
-		: BoundPropertyBase(prop, for_obj)
+	BoundProperty<PropT, ParentTs...>::BoundProperty(std::shared_ptr<const PropT> prop, Ex_ptr for_obj)
+		: BoundPropertyBase(std::move(prop), for_obj)
 	{
 
 	}
@@ -167,7 +167,7 @@ namespace cadabra {
 	BoundProperty<PropT, ParentTs...>::BoundProperty(Ex_ptr ex, Ex_ptr param)
 		: BoundPropertyBase(nullptr, ex)
 	{
-		auto new_prop = new cpp_type();
+		auto new_prop = std::make_shared<cpp_type>();
 		get_kernel_from_scope()->inject_property(new_prop, ex, param);
 		BoundPropertyBase::prop = new_prop;
 	}
@@ -182,8 +182,11 @@ namespace cadabra {
 			it, tmp, label, false, ignore_parent_rel);
 
 		if (res.first) {
+			// Properties in the kernel are owned by shared_ptr, so we can
+			// share ownership with the Python object.
+			std::shared_ptr<const PropT> shared(res.first->shared_from_this(), res.first);
 			return std::make_shared<BoundProperty<PropT, ParentTs...>>(
-				res.first,
+				shared,
 				res.second ? std::make_shared<Ex>(res.second->obj) : nullptr);
 		}
 		else {
@@ -195,7 +198,7 @@ namespace cadabra {
 	template <typename PropT, typename... ParentTs>
 	const PropT* BoundProperty<PropT, ParentTs...>::get_prop() const
 	{
-	return dynamic_cast<const PropT*>(BoundPropertyBase::prop);
+	return dynamic_cast<const PropT*>(BoundPropertyBase::prop.get());
 	}
 
 	template <typename PropT, typename... ParentTs>
@@ -207,7 +210,7 @@ namespace cadabra {
 
 		const auto *thisprop = get_prop();
 		thisprop->validate(*kernel, obj);
-		props.master_insert(*obj, thisprop);
+		props.master_insert(*obj, BoundPropertyBase::prop);
 		}
 
 	template <typename PropT, typename... ParentTs>

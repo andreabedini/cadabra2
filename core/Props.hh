@@ -25,6 +25,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #include <map>
 #include <list>
+#include <memory>
 #include <type_traits>
 #include "Storage.hh"
 
@@ -124,7 +125,12 @@ namespace cadabra {
 	/// that normal and list properties become pretty much identical.
 
 
-	class property {
+	/// Base class for all properties. Properties registered with a Kernel
+	/// are owned through std::shared_ptr (see Properties), so that other
+	/// holders (e.g. the Python bindings) can keep one alive with
+	/// shared_from_this() after the kernel has dropped it.
+
+	class property : public std::enable_shared_from_this<property> {
 		public:
 			property(bool hidden=false);
 			virtual ~property() {};
@@ -271,16 +277,18 @@ namespace cadabra {
 			typedef std::multimap<const property *, pattern *>                      pattern_map_t;
 
 			/// Register a property for the indicated Ex. Takes both normal and list
-			/// properties and works out which insert calls to make. The property ownership
-			/// is transferred to us on using this call.
-			std::string master_insert(Ex proptree, const property *thepropbase);
+			/// properties and works out which insert calls to make. We share
+			/// ownership of the property; it stays alive as long as it is attached
+			/// to at least one pattern (or someone else holds a reference).
+			std::string master_insert(Ex proptree, std::shared_ptr<const property> thepropbase);
 
 			void        clear();
 
-			/// The following two maps own the pointers to the properties and patterns stored
-			/// in them; use clear() to clean up. Note that pointers can sit in in more than one
-			/// entry in this map (when they are pointing to list_property objects, which are
-			/// shared between patterns).
+			/// The following two maps are indexes; they contain non-owning
+			/// pointers. The objects themselves are owned by `owned_properties`
+			/// and `owned_patterns` below. Note that a property pointer can sit in
+			/// more than one entry (list_property objects, and normal properties
+			/// assigned to several patterns, are shared between patterns).
 			property_map_t  props;  // pattern -> property
 			pattern_map_t   pats;   // property -> pattern; for list properties, patterns are stored here in order
 
@@ -324,16 +332,26 @@ namespace cadabra {
 		private:
 			// Insert a property. Do not use this directly, use the public
 			// interface `master_insert` instead.
-			void insert_prop(const Ex&, const property *);
-			void insert_list_prop(const std::vector<Ex>&, const list_property *);
+			void insert_prop(const Ex&, std::shared_ptr<const property>);
+			void insert_list_prop(const std::vector<Ex>&, std::shared_ptr<const list_property>);
+
+			/// Owners of everything the props/pats indexes point to.
+			std::map<const property *, std::shared_ptr<const property>> owned_properties;
+			std::map<const pattern *,  std::unique_ptr<pattern>>        owned_patterns;
+
+			pattern *new_pattern(const Ex&);
+			void     delete_pattern(pattern *);
+			/// Drop our ownership of a property if no pattern refers to it anymore.
+			void     release_if_unused(const property *);
 			bool check_label(const property *, const std::string&) const;
 			bool check_label(const labelled_property *, const std::string&) const;			
 			// Search through pointers
 			bool has(const property *, Ex::iterator);
 			// Find serial number of a pattern in a given list property
 			int  serial_number(const property *, const pattern *) const;
-			Ex_comparator *create_comparator() const;
-			void           destroy_comparator(Ex_comparator *) const;			
+			// Ex_comparator is incomplete here, so its deleter lives in Props.cc.
+			struct comparator_deleter { void operator()(Ex_comparator *) const; };
+			std::unique_ptr<Ex_comparator, comparator_deleter> create_comparator() const;			
 		};
 
 	template<class T>
@@ -354,11 +372,8 @@ namespace cadabra {
 	std::pair<const T*, const pattern *> Properties::get_with_pattern(Ex::iterator it, int& serialnum, const std::string& label,
 																							bool doserial, bool ignore_parent_rel) const
 		{
-		Ex_comparator *compptr = create_comparator();
-		// FIXME: catch and rethrow all exceptions so we do not leak memory
-		auto ret = get_with_pattern_ext<T>(it, *compptr, serialnum, label, doserial, ignore_parent_rel);
-		destroy_comparator(compptr);
-		return ret;
+		auto comp = create_comparator();
+		return get_with_pattern_ext<T>(it, *comp, serialnum, label, doserial, ignore_parent_rel);
 		}
 
 	template<class T>

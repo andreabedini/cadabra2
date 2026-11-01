@@ -19,7 +19,10 @@ namespace cadabra {
 			~Kernel();
 
 			/// Inject a property into the system and attach it to the given pattern.
-			/// Transfers property ownership to the kernel.
+			/// The kernel shares ownership of the property.
+			void inject_property(std::shared_ptr<property> prop, std::shared_ptr<Ex> pattern, std::shared_ptr<Ex> property_arguments);
+			/// As above, for a property allocated with `new`; ownership is taken
+			/// immediately, also when parsing or validating the property throws.
 			void inject_property(property *prop, std::shared_ptr<Ex> pattern, std::shared_ptr<Ex> property_arguments);
 
 			/// Create an Ex expression object from a string, which will be parsed.

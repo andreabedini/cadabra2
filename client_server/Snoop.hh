@@ -38,6 +38,45 @@ std::string safestring(const unsigned char *c);
 namespace snoop {
 
 	class SnoopImpl;
+
+	/// Owning wrapper for a prepared sqlite statement; finalizes it when
+	/// it goes out of scope (also when an exception is thrown). Converts
+	/// implicitly to the raw handle, so it can be passed to the sqlite3_*
+	/// functions directly; use out() as the output argument of
+	/// sqlite3_prepare.
+
+	class sqlite_statement {
+		public:
+			sqlite_statement() = default;
+			~sqlite_statement() { reset(); }
+			sqlite_statement(const sqlite_statement&) = delete;
+			sqlite_statement& operator=(const sqlite_statement&) = delete;
+
+			operator sqlite3_stmt *() const { return stmt_; }
+			sqlite3_stmt **out()            { reset(); return &stmt_; }
+			void reset()                    { if(stmt_) sqlite3_finalize(stmt_); stmt_=nullptr; }
+
+		private:
+			sqlite3_stmt *stmt_=nullptr;
+	};
+
+	/// Owning wrapper for a sqlite database connection; closes it when it
+	/// goes out of scope. Use out() as the output argument of sqlite3_open.
+
+	class sqlite_database {
+		public:
+			sqlite_database() = default;
+			~sqlite_database() { reset(); }
+			sqlite_database(const sqlite_database&) = delete;
+			sqlite_database& operator=(const sqlite_database&) = delete;
+
+			operator sqlite3 *() const { return db_; }
+			sqlite3 **out()            { reset(); return &db_; }
+			void reset()               { if(db_) sqlite3_close(db_); db_=nullptr; }
+
+		private:
+			sqlite3 *db_=nullptr;
+	};
    class Flush {};
    extern Flush flush;
 
@@ -321,8 +360,10 @@ namespace snoop {
          /// Variables
          
          bool          sync_immediately_;
-	      sqlite3      *db, *payload_db, *auth_db;
-			sqlite3_stmt *insert_statement, *id_for_uuid_statement, *payload_insert_statement, *testq_statement;
+			// The statements are declared after the databases, so that they
+			// are finalized before the databases are closed.
+			sqlite_database  db, payload_db, auth_db;
+			sqlite_statement insert_statement, id_for_uuid_statement, payload_insert_statement, testq_statement;
 			std::recursive_mutex    sqlite_mutex;
 			
       private:

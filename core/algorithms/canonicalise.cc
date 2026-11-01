@@ -1,4 +1,6 @@
 
+#include <algorithm>
+#include <vector>
 #include "Cleanup.hh"
 #include "Exchange.hh"
 #include "Functional.hh"
@@ -502,11 +504,19 @@ Algorithm::result_t canonicalise::apply(iterator& it)
 	//		}
 
 	if(*it->multiplier!=0) {
-		// Fill data for the xperm routines.
+		// Fill data for the xperm routines. The arrays are owned by
+		// std::vectors (so nothing leaks if anything below throws); xperm
+		// gets raw pointers into them. Each has at least one element so
+		// that the pointers are never null, as with `new int[0]`.
+		auto int_array = [](std::vector<int>& store, size_t n) {
+			store.assign(std::max<size_t>(n, 1), 0);
+			return store.data();
+			};
+		std::vector<int> gs_store;
 		int *gs=0;
 
 		if(generating_set.size()>0) {
-			gs=new int[generating_set.size()*generating_set[0].size()];
+			gs=int_array(gs_store, generating_set.size()*generating_set[0].size());
 			for(unsigned int i=0; i<generating_set.size(); ++i) {
 				for(unsigned int j=0; j<total_number_of_indices+2; ++j) {
 					gs[i*(total_number_of_indices+2)+j]=generating_set[i][j];
@@ -522,9 +532,9 @@ Algorithm::result_t canonicalise::apply(iterator& it)
 
 		// Setup the arrays for xperm from our own data structures.
 
-		int    *base=new int[base_here.size()];
-		int    *perm=new int[total_number_of_indices+2];
-		int   *cperm=new int[total_number_of_indices+2];
+		std::vector<int> base_store; int    *base=int_array(base_store, base_here.size());
+		std::vector<int> perm_store; int    *perm=int_array(perm_store, total_number_of_indices+2);
+		std::vector<int> cperm_store; int   *cperm=int_array(cperm_store, total_number_of_indices+2);
 
 		for(unsigned int i=0; i<base_here.size(); ++i)
 			base[i]=base_here[i];
@@ -534,9 +544,9 @@ Algorithm::result_t canonicalise::apply(iterator& it)
 		perm[total_number_of_indices]=total_number_of_indices+1;
 		perm[total_number_of_indices+1]=total_number_of_indices+2;
 
-		int  *lengths_of_dummy_sets=new int[dummy_sets.size()];
-		int  *dummies              =new int[ind_dummy.size()];
-		int  *metric_signatures    =new int[dummy_sets.size()];
+		std::vector<int> lengths_of_dummy_sets_store; int  *lengths_of_dummy_sets=int_array(lengths_of_dummy_sets_store, dummy_sets.size());
+		std::vector<int> dummies_store; int  *dummies              =int_array(dummies_store, ind_dummy.size());
+		std::vector<int> metric_signatures_store; int  *metric_signatures    =int_array(metric_signatures_store, dummy_sets.size());
 		int  dsi=0;
 		int  cdi=0;
 		dummy_set_t::iterator ds=dummy_sets.begin();
@@ -591,7 +601,7 @@ Algorithm::result_t canonicalise::apply(iterator& it)
 
 		// free_indices stores a list of index slots which contain a free
 		// index.
-		int              *free_indices=new int[ind_free.size()];
+		std::vector<int> free_indices_store; int              *free_indices=int_array(free_indices_store, ind_free.size());
 		sorted_it=ind_free.begin();
 		curr_index=0;
 		while(sorted_it!=ind_free.end()) {
@@ -608,8 +618,8 @@ Algorithm::result_t canonicalise::apply(iterator& it)
 		//			std::cerr << i << " ";
 		//		std::cerr << std::endl;
 
-		int *repeated_indices         = new int[ind_repeated.size()];
-		int *lengths_of_repeated_sets = new int[ind_repeated_lengths.size()];
+		std::vector<int> repeated_indices_store; int *repeated_indices         = int_array(repeated_indices_store, ind_repeated.size());
+		std::vector<int> lengths_of_repeated_sets_store; int *lengths_of_repeated_sets = int_array(lengths_of_repeated_sets_store, ind_repeated_lengths.size());
 
 		// repeated_indices contains a list of slots which contain repeated indices.
 		for(size_t i=0; i<ind_repeated.size(); ++i) {
@@ -655,11 +665,11 @@ Algorithm::result_t canonicalise::apply(iterator& it)
 		sw.start();
 
 		// JMM now uses a different convention.
-		int *perm1 = new int[total_number_of_indices+2];
-		int *perm2 = new int[total_number_of_indices+2];
-		int *free_indices_new_order = new int[ind_free.size()];
-		int *dummies_new_order      = new int[ind_dummy.size()];
-		int *repeated_new_order     = new int[ind_repeated.size()];
+		std::vector<int> perm1_store; int *perm1 = int_array(perm1_store, total_number_of_indices+2);
+		std::vector<int> perm2_store; int *perm2 = int_array(perm2_store, total_number_of_indices+2);
+		std::vector<int> free_indices_new_order_store; int *free_indices_new_order = int_array(free_indices_new_order_store, ind_free.size());
+		std::vector<int> dummies_new_order_store; int *dummies_new_order      = int_array(dummies_new_order_store, ind_dummy.size());
+		std::vector<int> repeated_new_order_store; int *repeated_new_order     = int_array(repeated_new_order_store, ind_repeated.size());
 
 		inverse(perm, perm1, total_number_of_indices+2);
 		for(size_t i=0; i<ind_free.size(); i++) {
@@ -764,11 +774,6 @@ Algorithm::result_t canonicalise::apply(iterator& it)
 		if (perm2[0] != 0) inverse(perm2, cperm, total_number_of_indices+2);
 		else copy_list(perm2, cperm, total_number_of_indices+2);
 
-		delete [] dummies_new_order;
-		delete [] free_indices_new_order;
-		delete [] repeated_new_order;
-		delete [] perm1;
-		delete [] perm2;
 
 		sw.stop();
 		//		std::cerr << "xperm took " << sw << std::endl;
@@ -821,18 +826,7 @@ Algorithm::result_t canonicalise::apply(iterator& it)
 			res = result_t::l_applied;
 			}
 
-		if(gs)
-			delete [] gs;
-		delete [] base;
 
-		delete [] repeated_indices;
-		delete [] lengths_of_repeated_sets;
-		delete [] metric_signatures;
-		delete [] lengths_of_dummy_sets;
-		delete [] dummies;
-		delete [] cperm;
-		delete [] perm;
-		delete [] free_indices;
 		}
 #ifdef DEBUG
 	std::cerr << "=====\n";

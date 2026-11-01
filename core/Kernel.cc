@@ -33,75 +33,75 @@ Kernel::Kernel(bool inject_defaults)
 	, warning_callback(nullptr)
 	{
 	if (inject_defaults) {
-		inject_property(new Distributable(),          ex_from_string("\\prod{#}"), 0);
-		inject_property(new IndexInherit(),           ex_from_string("\\prod{#}"), 0);
-		inject_property(new TableauInherit(),         ex_from_string("\\prod{#}"), 0);
-		inject_property(new CommutingAsProduct(),     ex_from_string("\\prod{#}"), 0);
-		inject_property(new DependsInherit(),         ex_from_string("\\prod{#}"), 0);
-		inject_property(new NumericalFlat(),          ex_from_string("\\prod{#}"), 0);
-		inject_property(new Inherit<Tableau>(),       ex_from_string("\\prod{#}"), 0);
-		inject_property(new Inherit<FilledTableau>(), ex_from_string("\\prod{#}"), 0);
+		inject_property(std::make_shared<Distributable>(),          ex_from_string("\\prod{#}"), 0);
+		inject_property(std::make_shared<IndexInherit>(),           ex_from_string("\\prod{#}"), 0);
+		inject_property(std::make_shared<TableauInherit>(),         ex_from_string("\\prod{#}"), 0);
+		inject_property(std::make_shared<CommutingAsProduct>(),     ex_from_string("\\prod{#}"), 0);
+		inject_property(std::make_shared<DependsInherit>(),         ex_from_string("\\prod{#}"), 0);
+		inject_property(std::make_shared<NumericalFlat>(),          ex_from_string("\\prod{#}"), 0);
+		inject_property(std::make_shared<Inherit<Tableau>>(),       ex_from_string("\\prod{#}"), 0);
+		inject_property(std::make_shared<Inherit<FilledTableau>>(), ex_from_string("\\prod{#}"), 0);
 
-		auto wi2 = new WeightInherit();
+		auto wi2 = std::make_shared<WeightInherit>();
 		wi2->combination_type = WeightInherit::multiplicative;
 		auto wa2 = ex_from_string("label=all, type=multiplicative");
 		inject_property(wi2,                          ex_from_string("\\prod{#}"), wa2);
 
-		inject_property(new IndexInherit(),           ex_from_string("\\frac{#}"), 0);
-		inject_property(new DependsInherit(),         ex_from_string("\\frac{#}"), 0);
+		inject_property(std::make_shared<IndexInherit>(),           ex_from_string("\\frac{#}"), 0);
+		inject_property(std::make_shared<DependsInherit>(),         ex_from_string("\\frac{#}"), 0);
 
-		inject_property(new Distributable(),          ex_from_string("\\wedge{#}"), 0);
-		inject_property(new IndexInherit(),           ex_from_string("\\wedge{#}"), 0);
+		inject_property(std::make_shared<Distributable>(),          ex_from_string("\\wedge{#}"), 0);
+		inject_property(std::make_shared<IndexInherit>(),           ex_from_string("\\wedge{#}"), 0);
 
-		inject_property(new DependsInherit(),         ex_from_string("\\wedge{#}"), 0);
-		inject_property(new NumericalFlat(),          ex_from_string("\\wedge{#}"), 0);
-		auto wi4 = new WeightInherit();
+		inject_property(std::make_shared<DependsInherit>(),         ex_from_string("\\wedge{#}"), 0);
+		inject_property(std::make_shared<NumericalFlat>(),          ex_from_string("\\wedge{#}"), 0);
+		auto wi4 = std::make_shared<WeightInherit>();
 		wi4->combination_type = WeightInherit::multiplicative;
 		auto wa4 = ex_from_string("label=all, type=multiplicative");
 		inject_property(wi4,                          ex_from_string("\\wedge{#}"), wa4);
 
-		inject_property(new IndexInherit(),           ex_from_string("\\sum{#}"), 0);
-		inject_property(new Inherit<Tableau>(),       ex_from_string("\\sum{#}"), 0);
-		inject_property(new Inherit<FilledTableau>(), ex_from_string("\\sum{#}"), 0);
-		inject_property(new CommutingAsSum(),         ex_from_string("\\sum{#}"), 0);
-		inject_property(new DependsInherit(),         ex_from_string("\\sum{#}"), 0);
-		auto wi = new WeightInherit();
+		inject_property(std::make_shared<IndexInherit>(),           ex_from_string("\\sum{#}"), 0);
+		inject_property(std::make_shared<Inherit<Tableau>>(),       ex_from_string("\\sum{#}"), 0);
+		inject_property(std::make_shared<Inherit<FilledTableau>>(), ex_from_string("\\sum{#}"), 0);
+		inject_property(std::make_shared<CommutingAsSum>(),         ex_from_string("\\sum{#}"), 0);
+		inject_property(std::make_shared<DependsInherit>(),         ex_from_string("\\sum{#}"), 0);
+		auto wi = std::make_shared<WeightInherit>();
 		auto wa = ex_from_string("label=all, type=additive");
 		inject_property(wi,                           ex_from_string("\\sum{#}"), wa);
 
-		auto d = new Derivative();
+		auto d = std::make_shared<Derivative>();
 		d->hidden(true);
 		inject_property(d, ex_from_string("\\cdbDerivative{#}"), 0);
 
-		inject_property(new Derivative(), ex_from_string("\\commutator{#}"), 0);
-		inject_property(new IndexInherit(), ex_from_string("\\commutator{#}"), 0);
+		inject_property(std::make_shared<Derivative>(), ex_from_string("\\commutator{#}"), 0);
+		inject_property(std::make_shared<IndexInherit>(), ex_from_string("\\commutator{#}"), 0);
 
-		inject_property(new Derivative(), ex_from_string("\\anticommutator{#}"), 0);
-		inject_property(new IndexInherit(), ex_from_string("\\anticommutator{#}"), 0);
+		inject_property(std::make_shared<Derivative>(), ex_from_string("\\anticommutator{#}"), 0);
+		inject_property(std::make_shared<IndexInherit>(), ex_from_string("\\anticommutator{#}"), 0);
 
-		inject_property(new Distributable(), ex_from_string("\\indexbracket{#}"), 0);
-		inject_property(new IndexInherit(), ex_from_string("\\indexbracket{#}"), 0);
+		inject_property(std::make_shared<Distributable>(), ex_from_string("\\indexbracket{#}"), 0);
+		inject_property(std::make_shared<IndexInherit>(), ex_from_string("\\indexbracket{#}"), 0);
 
-		inject_property(new DependsInherit(), ex_from_string("\\pow{#}"), 0);
-		auto wi3 = new WeightInherit();
+		inject_property(std::make_shared<DependsInherit>(), ex_from_string("\\pow{#}"), 0);
+		auto wi3 = std::make_shared<WeightInherit>();
 		auto wa3 = ex_from_string("label=all, type=power");
 		inject_property(wi3, ex_from_string("\\pow{#}"), wa3);
 
-		inject_property(new NumericalFlat(), ex_from_string("\\int{#}"), 0);
-		inject_property(new IndexInherit(), ex_from_string("\\int{#}"), 0);
+		inject_property(std::make_shared<NumericalFlat>(), ex_from_string("\\int{#}"), 0);
+		inject_property(std::make_shared<IndexInherit>(), ex_from_string("\\int{#}"), 0);
 
 		// Hidden nodes.
-		inject_property(new Accent(), ex_from_string("\\ldots{#}"), 0);
+		inject_property(std::make_shared<Accent>(), ex_from_string("\\ldots{#}"), 0);
 
 		// Accents, necessary for proper display.
-		inject_property(new Accent(), ex_from_string("\\hat{#}"), 0);
-		inject_property(new Accent(), ex_from_string("\\bar{#}"), 0);
-		inject_property(new Accent(), ex_from_string("\\overline{#}"), 0);
-		inject_property(new Accent(), ex_from_string("\\tilde{#}"), 0);
+		inject_property(std::make_shared<Accent>(), ex_from_string("\\hat{#}"), 0);
+		inject_property(std::make_shared<Accent>(), ex_from_string("\\bar{#}"), 0);
+		inject_property(std::make_shared<Accent>(), ex_from_string("\\overline{#}"), 0);
+		inject_property(std::make_shared<Accent>(), ex_from_string("\\tilde{#}"), 0);
 
 		// ImaginaryI
-		inject_property(new ImaginaryI(), ex_from_string("\\iu}"), 0);
-		auto iu = new LaTeXForm();
+		inject_property(std::make_shared<ImaginaryI>(), ex_from_string("\\iu}"), 0);
+		auto iu = std::make_shared<LaTeXForm>();
 		iu->latex.push_back(Ex("i"));
 		inject_property(iu, ex_from_string("\\iu}"), 0);
 		}
@@ -113,6 +113,11 @@ Kernel::~Kernel()
 	}
 
 void Kernel::inject_property(property *prop, std::shared_ptr<Ex> ex, std::shared_ptr<Ex> param)
+	{
+	inject_property(std::shared_ptr<property>(prop), ex, param);
+	}
+
+void Kernel::inject_property(std::shared_ptr<property> prop, std::shared_ptr<Ex> ex, std::shared_ptr<Ex> param)
 	{
 	Ex::iterator it=ex->begin();
 

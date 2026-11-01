@@ -82,7 +82,8 @@ bool Indices::parse(Kernel& kernel, std::shared_ptr<Ex> ex, keyval_t& keyvals)
 					throw ConsistencyException("Value sequence for Indices property should contain explicit integers.");
 
 				auto args = std::make_shared<cadabra::Ex>(ki->second.begin());
-				auto prop = new Integer();
+				// Keep our own reference: we read the parsed range below.
+				auto prop = std::make_shared<Integer>();
 				kernel.inject_property(prop, ex, args);
 
 				if(prop->difference.to_integer() > MAX_INTEGER_RANGE)
@@ -116,7 +117,7 @@ bool Indices::parse(Kernel& kernel, std::shared_ptr<Ex> ex, keyval_t& keyvals)
 			// the former can only deal with continuous ranges.
 			if(is_continuous) {
 //				std::cerr << "Injecting Integer property" << std::endl;
-				kernel.inject_property(new Integer(), ex,
+				kernel.inject_property(std::make_shared<Integer>(), ex,
 											  kernel.ex_from_string(std::to_string(values_[0].to_integer())+".."
 																			+std::to_string(values_[values_.size()-1].to_integer())
 																			));

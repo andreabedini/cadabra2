@@ -20,3 +20,16 @@ def test02():
         print("Test 02 passed")
 
 test02()
+
+def test03():
+    __cdbkernel__=create_scope()
+    # Redeclaring a property replaces it in the kernel; a Python object
+    # holding the old one must keep it alive (this used to read freed
+    # memory).
+    p = Symmetric(Ex(r'A_{m n}'))
+    q = Symmetric(Ex(r'A_{m n}'))
+    assert(str(p)==str(q))
+    assert(Symmetric.get(Ex(r'A_{m n}')) is not None)
+    print("Test 03 passed")
+
+test03()

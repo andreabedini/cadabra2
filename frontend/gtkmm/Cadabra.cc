@@ -40,7 +40,6 @@ Cadabra::Cadabra()
 	                   cdb::APP_HANDLES_OPEN |
 							 cdb::APP_HANDLES_COMMAND_LINE |
 	                   cdb::APP_NON_UNIQUE),
-	  compute(0), compute_thread(0),
 	  server_port(0), server_ip_address("127.0.0.1"),
 	  no_registration(false)
 	{
@@ -101,10 +100,8 @@ Cadabra::~Cadabra()
 		script->terminate();
 	if(script_thread)
 		script_thread->join();
-	if(script)
-		delete script;
-	if(script_thread)
-		delete script_thread;
+	script_thread.reset();
+	script.reset();
 
 	// Also stop the compute logic and join that thread waiting for it
 	// to complete.
@@ -113,10 +110,8 @@ Cadabra::~Cadabra()
 		compute->terminate();
 	if(compute_thread)
 		compute_thread->join();
-	if(compute)
-		delete compute;
-	if(compute_thread)
-		delete compute_thread;
+	compute_thread.reset();
+	compute.reset();
 
 
 	//	for(auto w: windows)
@@ -172,15 +167,15 @@ void Cadabra::on_activate()
 	{
 	Gtk::Application::on_activate();
 	
-	compute = new cadabra::ComputeThread(server_port, server_token, server_ip_address);
-	compute_thread = new std::thread(&cadabra::ComputeThread::run, compute);
+	compute = std::make_unique<cadabra::ComputeThread>(server_port, server_token, server_ip_address);
+	compute_thread = std::make_unique<std::thread>(&cadabra::ComputeThread::run, compute.get());
 
 	auto nw = new cadabra::NotebookWindow(this, false, window_geometry, window_title);
 	compute->set_master(nw, nw);
 	nw->main_thread_id = std::this_thread::get_id();
 
 	// Connect the two threads.
-	nw->set_compute_thread(compute);
+	nw->set_compute_thread(compute.get());
 
 	// Setup ctrl-C handler so we can shut down gracefully (i.e. ask
 	// for confirmation, shut down server).
@@ -191,8 +186,8 @@ void Cadabra::on_activate()
 	nw->set_visible(true);   // show() is deprecated in GTK4
 
 	// Start the script handler so external programs can talk to us.
-	script = new cadabra::ScriptThread(nw, nw);
-	script_thread = new std::thread(&cadabra::ScriptThread::run, script);
+	script = std::make_unique<cadabra::ScriptThread>(nw, nw);
+	script_thread = std::make_unique<std::thread>(&cadabra::ScriptThread::run, script.get());
 
 	std::cerr << "control channel ws://localhost:" << script->get_local_port()
 				 << "/" << script->get_authentication_token() << std::endl;

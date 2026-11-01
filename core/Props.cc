@@ -155,21 +155,30 @@ bool Properties::has(const property *pb, Ex::iterator it)
 
 void Properties::clear()
 	{
-	// Clear and free the property lists. Since pointers to properties can
-	// be shared, we use the pats map and make sure that we only free each
-	// property* pointer once.
-	pattern_map_t::const_iterator it=pats.begin();
-	const property *previous=0;
-	while(it!=pats.end()) {
-		if(previous!=it->first) {
-			previous=it->first;
-			delete it->first;
-			}
-		delete it->second;
-		++it;
-		}
+	// The indexes first (they point into the owned objects), then the owners.
 	props.clear();
 	pats.clear();
+	owned_patterns.clear();
+	owned_properties.clear();
+	}
+
+pattern *Properties::new_pattern(const Ex& ex)
+	{
+	auto pat = std::make_unique<pattern>(ex);
+	pattern *ret = pat.get();
+	owned_patterns.emplace(ret, std::move(pat));
+	return ret;
+	}
+
+void Properties::delete_pattern(pattern *pat)
+	{
+	owned_patterns.erase(pat);
+	}
+
+void Properties::release_if_unused(const property *prop)
+	{
+	if(pats.find(prop)==pats.end())
+		owned_properties.erase(prop);
 	}
 
 Properties::registered_property_map_t::~registered_property_map_t()
@@ -346,13 +355,12 @@ bool labelled_property::parse(Kernel&, std::shared_ptr<Ex>, keyval_t& keyvals)
 //	  return one.obj==two.obj; // FIXME: handle dummy indices
 //	  }
 
-void Properties::insert_prop(const Ex& et, const property *pr)
+void Properties::insert_prop(const Ex& et, std::shared_ptr<const property> prsp)
 	{
 	//	assert(pats.find(pr)==pats.end()); // identical properties have to be assigned through insert_list_prop
 
-	// FIXME: is it really necessary to store this by pointer? We are in any case
-	// not cleaning this up correctly yet.
-	pattern *pat=new pattern(et);
+	const property *pr = prsp.get();
+	pattern *pat=new_pattern(et);
 
 	std::pair<property_map_t::iterator, property_map_t::iterator> pit=
 	   props.equal_range(pat->obj.begin()->name_only());
@@ -390,14 +398,12 @@ void Properties::insert_prop(const Ex& et, const property *pr)
 					// If the new property instance is the same as the old one, we can stop
 					// (this happens if a pattern is accidentally repeated in a property assignment).
 					if(oldprop==pr) {
-						delete pat;
+						delete_pattern(pat);
 						return;
 						}
 
 					// Erase the pattern->property entry, and delete the pattern.
-					// FIXME: store pattern by value.
 					props.erase(pit.first);
-					delete oldpat;
 
 					// Remove the property->pattern entry. Only delete the property
 					// if it is no longer associated to any other pattern.
@@ -415,10 +421,10 @@ void Properties::insert_prop(const Ex& et, const property *pr)
 							break;
 							}
 						}
-					if(pats.find(oldprop)==pats.end()) {
-						//						std::cerr << "no other references" << std::endl;
-						delete oldprop;
-						}
+					delete_pattern(oldpat);
+					// Anyone else holding the property (e.g. a Python object)
+					// keeps it alive.
+					release_if_unused(oldprop);
 
 					break;
 					}
@@ -427,13 +433,15 @@ void Properties::insert_prop(const Ex& et, const property *pr)
 		++pit.first;
 		}
 
+	owned_properties.emplace(pr, std::move(prsp));
 	pats.insert(pattern_map_t::value_type(pr, pat));
 	// std::cerr << "inserting for " << *(pat->obj.begin()->name) << std::endl;
 	props.insert(property_map_t::value_type(pat->obj.begin()->name_only(), pat_prop_pair_t(pat,pr)));
 	}
 
-void Properties::insert_list_prop(const std::vector<Ex>& its, const list_property *pr)
+void Properties::insert_list_prop(const std::vector<Ex>& its, std::shared_ptr<const list_property> prsp)
 	{
+	const list_property *pr = prsp.get();
 	assert(pats.find(pr)==pats.end()); // identical properties have to be assigned through insert_list_prop
 	assert(its.size()>0);
 
@@ -444,7 +452,10 @@ void Properties::insert_list_prop(const std::vector<Ex>& its, const list_propert
 		const property *tmp = (*fit).first;
 		if(typeid(*tmp)==typeid(*pr))
 			if(pr->equals((*fit).first)==property::exact_match) {
-				pr=static_cast<const list_property *>( (*fit).first );
+				// Use the existing one; the new one is released when the
+				// caller drops it.
+				prsp=std::static_pointer_cast<const list_property>(owned_properties.at((*fit).first));
+				pr=prsp.get();
 				break;
 				}
 		++fit;
@@ -464,6 +475,9 @@ void Properties::insert_list_prop(const std::vector<Ex>& its, const list_propert
 		++pit;
 		}
 	if(to_delete_property) {
+		auto range=pats.equal_range(to_delete_property);
+		for(auto pi=range.first; pi!=range.second; ++pi)
+			delete_pattern(pi->second);
 		pats.erase(to_delete_property);
 		property_map_t::iterator it=props.begin();
 		while(it!=props.end()) {
@@ -472,13 +486,15 @@ void Properties::insert_list_prop(const std::vector<Ex>& its, const list_propert
 			if((*it).second.second==to_delete_property) props.erase(it);
 			it=nxt;
 			}
+		owned_properties.erase(to_delete_property);
 		}
 
 
 	// Now register the list property.
 
+	owned_properties.emplace(pr, prsp);
 	for(unsigned int i=0; i<its.size(); ++i) {
-		pattern *pat=new pattern(its[i]);
+		pattern *pat=new_pattern(its[i]);
 
 		// Removing properties causes more problems than it solves (the only reason
 		// for overwriting a list property is to change the SortOrder, which is
@@ -577,13 +593,13 @@ d,e should have their property removed.
 // Insert a property for the given pattern Ex. Determines whether the property
 // is a list property or a normal one, and dispatches accordingly.
 
-std::string Properties::master_insert(Ex proptree, const property *thepropbase)
+std::string Properties::master_insert(Ex proptree, std::shared_ptr<const property> thepropbase)
 	{
 	std::ostringstream str;
 
 	Ex::sibling_iterator st=proptree.begin();
 
-	const list_property *thelistprop=dynamic_cast<const list_property *>(thepropbase);
+	auto thelistprop=std::dynamic_pointer_cast<const list_property>(thepropbase);
 	if(thelistprop) { // a list property
 		std::vector<Ex> objs;
 		if(*st->name=="\\comma") {
@@ -602,7 +618,7 @@ std::string Properties::master_insert(Ex proptree, const property *thepropbase)
 		// but we need the patterns to have parent_rel set to p_sub and p_super in order to avoid
 		// special cases in the pattern matcher later.
 		// DOCME: the above
-		if(dynamic_cast<const Indices *>(thelistprop)) {
+		if(dynamic_cast<const Indices *>(thelistprop.get())) {
 			std::vector<Ex> objs2;
 			for(auto& obj: objs) {
 				Ex obj2(obj);
@@ -621,7 +637,7 @@ std::string Properties::master_insert(Ex proptree, const property *thepropbase)
 			}
 		}
 	else {   // a normal property
-		const property *theprop=thepropbase;
+		const auto& theprop=thepropbase;
 		assert(theprop);
 		if(*st->name=="\\comma") {
 			Ex::sibling_iterator sib=proptree.begin(st);
@@ -650,12 +666,12 @@ bool Properties::check_label(const labelled_property* p, const std::string& labe
 	return (p->label==label || p->label=="all");
 	}
 	
-Ex_comparator *Properties::create_comparator() const
-	{
-	return new Ex_comparator(*this);
-	}
-
-void Properties::destroy_comparator(Ex_comparator *c) const
+void Properties::comparator_deleter::operator()(Ex_comparator *c) const
 	{
 	delete c;
+	}
+
+std::unique_ptr<Ex_comparator, Properties::comparator_deleter> Properties::create_comparator() const
+	{
+	return std::unique_ptr<Ex_comparator, comparator_deleter>(new Ex_comparator(*this));
 	}

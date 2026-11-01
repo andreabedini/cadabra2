@@ -18,7 +18,7 @@ namespace cadabra {
 	{
 	public:
 		BoundPropertyBase();
-		BoundPropertyBase(const property* prop, Ex_ptr for_obj);
+		BoundPropertyBase(std::shared_ptr<const property> prop, Ex_ptr for_obj);
 		virtual ~BoundPropertyBase();
 
 		/// Human-readable form in text, i.e. no special formatting.
@@ -33,11 +33,11 @@ namespace cadabra {
 		Ex& get_ex() const;
 		Ex::iterator get_it() const;
 
-		// We keep a pointer to the C++ property, so it is possible to
-		// query properties using the Python interface. However, this C++
-		// object is owned by the C++ kernel and does not get destroyed
-		// when the Python object goes out of scope.
-		const property* prop;
+		// The C++ property, so it is possible to query properties using
+		// the Python interface. Ownership is shared with the kernel: the
+		// property stays alive while this object exists, even if the
+		// kernel has dropped it (e.g. because it was redeclared).
+		std::shared_ptr<const property> prop;
 
 		// We also keep a shared pointer to the expression for which we
 		// have defined this property, so that we can print sensible
@@ -59,7 +59,7 @@ namespace cadabra {
 			// Construct new property from expression and argument list
 			BoundProperty(Ex_ptr ex, Ex_ptr param);
 			// Construct from existing cpp property object
-			BoundProperty(const PropT* prop, Ex_ptr for_obj);
+			BoundProperty(std::shared_ptr<const PropT> prop, Ex_ptr for_obj);
 
 			/// Human-readable form in text, i.e. no special formatting.
 			std::string str_() const;
