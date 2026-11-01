@@ -2,6 +2,10 @@
 #include "Compare.hh"
 #include "Storage.hh"
 
+#include <iostream>
+
+using namespace cadabra;
+
 int main()
 	{
 	Ex a1("A"), a2("A");
@@ -11,6 +15,11 @@ int main()
 
 	tree_exact_less_for_indexmap_obj compare;
 
-	std::cerr << compare(a2, a1) << std::endl;
-	assert(compare(a1, a2)!=compare(a2,a1));
+	// Objects that differ only in index position must be ordered
+	// one way or the other, not considered equal.
+	if(compare(a1, a2)==compare(a2, a1)) {
+		std::cerr << "test_comparison: sub/super index position not distinguished" << std::endl;
+		return 1;
+		}
+	return 0;
 	}

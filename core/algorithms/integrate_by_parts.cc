@@ -64,8 +64,10 @@ bool integrate_by_parts::int_and_derivative_related(iterator, iterator) const
 bool integrate_by_parts::derivative_acting_on_arg(iterator der_it) const
 	{
 	sibling_iterator arg=tr.begin(der_it);
-	while(arg->is_index())
+	while(arg!=tr.end(der_it) && arg->is_index())
 		++arg;
+	if(arg==tr.end(der_it))
+		return false;
 
 	Ex_comparator comp(kernel.properties);
 	auto top=away_from.begin();

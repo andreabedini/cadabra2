@@ -82,7 +82,8 @@ std::complex<double> NInterpolatingFunction::evaluate(double v) const
 //			});
 		}
 	
-	if(v < var_values.values.front().real() || v > var_values.values.back().real())
+	// Written so that NaN is rejected too.
+	if(!(v >= var_values.values.front().real() && v <= var_values.values.back().real()))
 		throw ArgumentException("NInterpolatingFunction: evaluated outside domain.");
 
 	size_t i = find_interval(v);
