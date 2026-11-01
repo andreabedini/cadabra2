@@ -517,16 +517,19 @@ std::pair<std::string, std::string> cadabra::convert_line(const std::string& lin
 	auto& op     = cv.op;
 	auto& indent = cv.indent;
 
-	std::regex imatch("([\\s]*)([^\\s].*[^\\s])([\\s]*)");
-	std::cmatch mres;
-
+	// Split into indentation, content and trailing whitespace. (This used
+	// a regex which required at least two non-blank characters, so that
+	// e.g. an indented bare ';' was not recognised.)
+	const char *blank=" \t\n\r\f\v";
 	std::string indent_line, end_of_line, line_stripped;
-	if(std::regex_match(line.c_str(), mres, imatch)) {
-		indent_line=std::string(mres[1].first, mres[1].second);
-		end_of_line=std::string(mres[3].first, mres[3].second);
-		line_stripped=std::string(mres[2]);
+	size_t first=line.find_first_not_of(blank);
+	if(first!=std::string::npos) {
+		size_t last=line.find_last_not_of(blank);
+		indent_line  =line.substr(0, first);
+		line_stripped=line.substr(first, last-first+1);
+		end_of_line  =line.substr(last+1);
 		}
-	else {
+	else { // blank line; handled as before
 		indent_line="";
 		end_of_line="\n";
 		line_stripped=line;
@@ -651,9 +654,10 @@ std::pair<std::string, std::string> cadabra::convert_line(const std::string& lin
 					      +"'), Ex(r'" +escape_quotes(argument) + "') )";
 					}
 				else {
-					// no arguments
-					line_stripped=line_stripped.substr(0,line_stripped.size()-1);
-					ret = indent_line + "__cdbtmp__ = " + line_stripped.substr(found+2)
+					// No arguments. Use the matched property name: the line
+					// need not end in a terminator (this used to drop its last
+					// character regardless, turning 'Indices' into 'Indice').
+					ret = indent_line + "__cdbtmp__ = " + propname
 					      + "(Ex(r'"+escape_quotes(line_stripped.substr(0,found))+"'), Ex(r''))";
 					}
 				if(lastchar==";" && display)

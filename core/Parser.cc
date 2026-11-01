@@ -358,22 +358,41 @@ bool Parser::string2tree(const std::string& inp)
 					break;
 					}
 			case m_property: // properties do not need brackets
+				// We get here right after '::' (or '$'); m_findchildren has
+				// pushed a bracket (b_none) and parent_rel (p_property) for
+				// the property. Whitespace before the name is skipped, and
+				// there has to be a name.
 				if(c==' ' || c=='\n') {
-					current_mode.pop_back();
-					current_bracket.pop_back();
-					current_parent_rel.pop_back();
-					current_parent=tree->parent(current_parent);
+					if(rest_is_blank(i))
+						throw std::logic_error("Property name missing after '::'.");
+					advance(i);
+					break;
 					}
-				else if(is_opening_bracket(c)) {
-					if(tmp.size()>0) {
-						current_parent=tree->append_child(current_parent,str_node(tmp,
-						                                  current_bracket.back(),
-						                                  current_parent_rel.back()));
-						}
-					current_mode.push_back(m_childgroup);
-					}
-				advance(i);
-				tmp+=c;
+				// An empty name: e.g. `A:: Symmetric`, which the preprocessor
+				// turns into the product `\prod{A$}{Symmetric}`. This used to
+				// lose the property silently.
+				if(is_closing_bracket(c)!=str_node::b_no)
+					throw std::logic_error("Property name missing after '::'.");
+				// Parse the property name, with its arguments if any, like
+				// any other name: it becomes a child of the object. When it
+				// is done, m_property_end pops the bracket and parent_rel.
+				//
+				// This used to open a child group instead (through a test
+				// `if(is_opening_bracket(c))` which was always true). Being a
+				// b_none group, that consumed the next plain closing brace,
+				// e.g. the one ending the first factor in the preprocessed
+				// `\prod{A$Symmetric}{B}`, and the rest of the input was
+				// mangled (a node named `{B`). Its whitespace branch popped
+				// the bracket and parent_rel a second time.
+				current_mode.back()=m_property_end;
+				current_mode.push_back(m_name);
+				break;
+			case m_property_end:
+				// The property name (and arguments) have been parsed; let the
+				// enclosing mode handle the current character.
+				current_mode.pop_back();
+				current_bracket.pop_back();
+				current_parent_rel.pop_back();
 				break;
 			case m_verbatim:
 				if(c=='\"')
@@ -443,6 +462,14 @@ bool Parser::string2tree(const std::string& inp)
 				break;
 			}
 		}
+	return true;
+	}
+
+bool Parser::rest_is_blank(unsigned int i) const
+	{
+	for(; i<str.size(); ++i)
+		if(str[i]!=' ' && str[i]!='\n')
+			return false;
 	return true;
 	}
 

@@ -5,6 +5,7 @@
 #include "Algorithm.hh" // FIXME: only needed because index_iterator is in there
 #include "Exceptions.hh"
 #include <sstream>
+#include <map>
 #include <regex>
 #include "properties/Indices.hh"
 #include "properties/Coordinate.hh"
@@ -1698,12 +1699,31 @@ namespace cadabra {
 				Ex::sibling_iterator lhs=cond.begin();
 				Ex::sibling_iterator rhs=lhs;
 				++rhs;
-				// If we have a match, all indices have replacement rules.
-				std::string pat=(*rhs->name).substr(1,(*rhs->name).size()-2);
-				//			txtout << "matching " << *comp.replacement_map[lhs->name]
-				//					 << " with pattern " << pat << std::endl;
-				std::regex reg(pat);
-				if (!std::regex_match(*(replacement_map[Ex(lhs)].begin()->name), reg))
+				// The pattern is a quoted string.
+				const std::string& quoted=*rhs->name;
+				if(quoted.size()<2) {
+					error="Regex pattern should be a quoted string.";
+					return false;
+					}
+				std::string pat=quoted.substr(1, quoted.size()-2);
+				// The symbol has to have been matched (like \unequals above);
+				// operator[] would insert an empty entry and dereference it.
+				auto fnd=replacement_map.find(Ex(lhs));
+				if(fnd==replacement_map.end() || fnd->second.begin()==fnd->second.end())
+					return false;
+				// Compile each pattern only once, not on every match attempt.
+				static thread_local std::map<std::string, std::regex> compiled;
+				auto cit=compiled.find(pat);
+				if(cit==compiled.end()) {
+					try {
+						cit=compiled.emplace(pat, std::regex(pat)).first;
+						}
+					catch(std::regex_error& ex) {
+						error="Invalid regex pattern '"+pat+"': "+ex.what();
+						return false;
+						}
+					}
+				if (!std::regex_match(*(fnd->second.begin()->name), cit->second))
 					return false;
 				}
 			// V2: FIXME: re-enable searching for properties

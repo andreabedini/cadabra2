@@ -109,6 +109,7 @@ set(RTESTS
   vary
   young
   serialize
+  core_regressions
 #  youngreduce
 #  yrtrace
   )

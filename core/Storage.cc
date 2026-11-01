@@ -50,8 +50,17 @@ namespace cadabra {
 		{
 		if(!mul.is_rational())
 			throw ConsistencyException("Cannot convert double to long.");
-		
-		return mul.get_rational().get_num().get_si();
+
+		// Callers use this for dimensions, exponents, degrees, sequence
+		// bounds and the like; silently truncating 1/2 to 0, or wrapping
+		// a huge integer, gives wrong results rather than an error.
+		mpq_class q = mul.get_rational();
+		q.canonicalize();
+		if(q.get_den()!=1)
+			throw ConsistencyException("Expected an integer, got "+q.get_str()+".");
+		if(!q.get_num().fits_slong_p())
+			throw ConsistencyException("Integer "+q.get_str()+" is too large.");
+		return q.get_num().get_si();
 		}
 
 	double to_double(multiplier_t mul)

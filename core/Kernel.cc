@@ -100,10 +100,10 @@ Kernel::Kernel(bool inject_defaults)
 		inject_property(new Accent(), ex_from_string("\\tilde{#}"), 0);
 
 		// ImaginaryI
-		inject_property(new ImaginaryI(), ex_from_string("\\iu}"), 0);
+		inject_property(new ImaginaryI(), ex_from_string("\\iu"), 0);
 		auto iu = new LaTeXForm();
 		iu->latex.push_back(Ex("i"));
-		inject_property(iu, ex_from_string("\\iu}"), 0);
+		inject_property(iu, ex_from_string("\\iu"), 0);
 		}
 	}
 

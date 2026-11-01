@@ -58,12 +58,15 @@ namespace cadabra {
 
 			enum mode_t { m_skipwhite=0, m_name=1, m_findchildren=2,
 			              m_singlecharname=3, m_backslashname=4,
-			              m_childgroup=5, m_initialgroup=6, m_verbatim=7, m_property=8
+			              m_childgroup=5, m_initialgroup=6, m_verbatim=7, m_property=8,
+			              m_property_end=9
 			};
 
 			void                   advance(unsigned int& i);
 			char32_t               get_token(unsigned int i);
 			bool                   is_number(const std::u32string& str) const;
+			/// Whether everything from position i onwards is whitespace.
+			bool                   rest_is_blank(unsigned int i) const;
 			str_node::bracket_t    is_closing_bracket(const char32_t& br) const;
 			str_node::bracket_t    is_opening_bracket(const char32_t& br) const;
 			str_node::parent_rel_t is_link(const char32_t& ln) const;

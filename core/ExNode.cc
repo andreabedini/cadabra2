@@ -296,6 +296,29 @@ ExNode ExNode::add_ex(std::shared_ptr<cadabra::Ex> other)
 
 void ExNode::erase()
 	{
+	// When iterating over all nodes (pre-order), the look-ahead iterator
+	// `nxtit` usually points at the first child of `it`, which is about to
+	// be freed along with it. Move it past the subtree of `it` first,
+	// applying the same filtering as update(). (Sibling and index iteration
+	// keep their look-ahead outside this subtree.)
+	if(!use_sibling_iterator && !use_index_iterator && nxtit!=stopit) {
+		Ex::iterator walk=nxtit;
+		while(walk!=it && walk!=topit && ex->is_valid(ex->parent(walk)))
+			walk=ex->parent(walk);
+		if(walk==it) {
+			nxtit=it;
+			nxtit.skip_children();
+			++nxtit;
+			while(nxtit!=stopit) {
+				if(*nxtit->name=="\\ldots") {
+					nxtit.skip_children();
+					}
+				else if(tag=="" || *nxtit->name==tag)
+					break;
+				++nxtit;
+				}
+			}
+		}
 	ex->erase(it);
 	}
 

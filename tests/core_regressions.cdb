@@ -1,0 +1,86 @@
+# Regression tests for assorted core fixes.
+#
+# Note: a line containing two colons is turned into a property declaration
+# by the notebook preprocessor, even inside a string, and the same holds
+# for Cadabra assignments; such strings are built from CC and DEF below.
+
+CC = ':'*2
+DEF = ':'+'='
+
+def test01():
+    # Property syntax inside expressions.
+    __cdbkernel__=create_scope()
+    assert(Ex('A'+CC+'Symmetric', False).input_form()=='A${Symmetric}')
+    # Juxtaposition after a property is a product (this used to produce a
+    # node named '{B').
+    assert(Ex('A'+CC+'Symmetric B', False).input_form()=='A${Symmetric} B')
+    assert(Ex('A'+CC+'Weight(label=f) + B', False).input_form()=='A${Weight(label = f)} + B')
+    for bad in ['A'+CC, 'A'+CC+' Symmetric']:
+        try:
+            Ex(bad, False)
+            assert(1==0)
+        except RuntimeError as e:
+            assert("Property name missing" in str(e))
+    print("Test 01 passed")
+
+test01()
+
+def test02():
+    # \regex condition on a symbol which the pattern does not bind: no
+    # match (this used to insert an empty entry and dereference it).
+    __cdbkernel__=create_scope()
+    ex:= A + B3 + C7.
+    substitute(_, $A + M? + N? | \regex{Q?}{"[A-Z]7"} -> 0$)
+    tst:= A + B3 + C7 - @(ex);
+    assert(tst==0)
+    # An invalid pattern is not a match either, rather than an exception
+    # from deep inside the matcher.
+    substitute(_, $A + M? + N? | \regex{M?}{"[A-Z"} -> 0$)
+    tst:= A + B3 + C7 - @(ex);
+    assert(tst==0)
+    print("Test 02 passed")
+
+test02()
+
+def test03():
+    # Erasing a node while iterating over all nodes (the look-ahead used to
+    # point into the erased subtree).
+    __cdbkernel__=create_scope()
+    ex = Ex(r'A_{m} + B_{m} + C_{m}')
+    seen=[]
+    for n in ex:
+        seen.append(n.name)
+        if n.name=='A':
+            n.erase()
+    assert(seen==[r'\sum', 'A', 'B', 'm', 'C', 'm'])
+    tst:= B_{m} + C_{m} - @(ex);
+    assert(tst==0)
+    print("Test 03 passed")
+
+test03()
+
+def test04():
+    # Integers given to properties are not silently truncated.
+    __cdbkernel__=create_scope()
+    try:
+        Spinor(Ex(r'\psi'), Ex(r'dimension=1/2'))
+        assert(1==0)
+    except RuntimeError:
+        pass
+    # \iu is registered as ImaginaryI.
+    assert(ImaginaryI.get(Ex(r'\iu')) is not None)
+    print("Test 04 passed")
+
+test04()
+
+def test05():
+    # Notebook conversion: a property declaration without terminator used
+    # to lose its last character ('Indice'), and an indented bare ';' was
+    # not recognised.
+    out = cdb2python_string("{a,b}"+CC+"Indices\nif True:\n    ex"+DEF+"A;\n    ;\n", True, "")
+    assert("Indices(Ex(r'''{a,b}''')" in out)
+    assert("    display(_)" in out)
+    assert("; display(_)" not in out)
+    print("Test 05 passed")
+
+test05()

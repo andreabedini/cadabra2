@@ -150,9 +150,9 @@ def test08():
     assert(tst==0)
     print("Test 08b passed")
     ex:= A + B D + E B + C Q + D;
-    cp1:= @(ex)        
+    cp1:= @(ex);
     zoom(ex, $B Q??$)
-    cp2:= @(ex)        
+    cp2:= @(ex);
     zoom(ex, $E Q??$)
     unzoom(ex, repeat=True)
     tst:= @(cp1) - @(ex);

@@ -583,9 +583,6 @@ namespace cadabra {
 			str >> parser;
 			}
 		catch (std::exception& except) {
-			for(size_t i=0; i<ex_.size(); ++i)
-				std::cerr << static_cast<int>(static_cast<uint8_t>(ex_[i])) << " ";
-			std::cerr << std::endl;
 			throw ParseException(std::string("Cannot parse: ")+except.what());
 			}
 		parser.finalise();
