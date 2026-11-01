@@ -56,6 +56,10 @@ if(USE_MICROTEX)
   endif()
   
   target_compile_options(microtex PUBLIC "-DHAVE_AUTO_FONT_FIND=1" "-Wno-reorder" "-Wno-sign-compare" "-Wno-switch" "-Wno-unused-variable" "-Wno-unused-parameter" "-Wno-ignored-qualifiers" "-Wno-mismatched-tags" "-Wno-missing-braces" "-Wno-missing-field-initializers")
+  # Our stricter warnings (see the top-level CMakeLists.txt) are not
+  # meant for this third-party code. PRIVATE, so that they still apply
+  # to our own targets which link against microtex.
+  target_compile_options(microtex PRIVATE "-Wno-non-virtual-dtor" "-Wno-suggest-override")
 else()
   message(STATUS "Only using LaTeX for typesetting (disabling MicroTeX)")
 endif()
