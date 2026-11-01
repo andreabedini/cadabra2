@@ -88,7 +88,7 @@ namespace cadabra {
 			/// corresponding to the input cell.
 
 			bool                          hidden;
-			bool                          sensitive;
+			bool                          sensitive=true; // was never initialised, yet copied (UB)
 
 			/// Flag indicating whether this cell should be ignored in case the 
 			/// notebook is imported. Essentially the equivalent of `if __name__=="__main__"`.
