@@ -1681,7 +1681,10 @@ void droprepeatedset(int firstd,
 
 	for (i=0; i<vrsl; i++) {
 		if (repes[itotal]==firstd && vrs[i]!=0) {
-			for (j=itotal; j<*rl; j++) {
+			/* Shift the remaining elements down by one. Note the bound
+			   *rl-1: the original xPerm code used j<*rl, which reads
+			   repes[*rl], one element past the end of the list. */
+			for (j=itotal; j<*rl-1; j++) {
 				repes[j] = repes[j+1];
 				}
 			vrs[i] = vrs[i]-1;

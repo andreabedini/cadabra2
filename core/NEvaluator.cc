@@ -48,68 +48,73 @@ NTensor NEvaluator::evaluate()
 	using complex_func = std::complex<double>(*)(const std::complex<double>&);
 	// const double eps = 1e-10;
 
+	// Names are interned with insert() rather than looked up with find():
+	// if a name has not been seen yet, find() would return name_set.end(),
+	// which the map comparator (nset_it_less) would then dereference.
+	auto intern = [](const char *nm) { return name_set.insert(nm).first; };
+
 	const std::map<nset_t::iterator, complex_func, nset_it_less> elementary
 		= { // Trigonometric functions.
 
-		{ name_set.find("\\sin"), std::sin<double> },
-		{ name_set.find("\\cos"), std::cos<double> },
-		{ name_set.find("\\tan"), std::tan<double> },
+		{ intern("\\sin"), std::sin<double> },
+		{ intern("\\cos"), std::cos<double> },
+		{ intern("\\tan"), std::tan<double> },
 
-		{ name_set.find("\\csc"), [](const std::complex<double>& x) { return 1.0/std::sin<double>(x); } },
-		{ name_set.find("\\sec"), [](const std::complex<double>& x) { return 1.0/std::cos<double>(x); } },
-		{ name_set.find("\\cot"), [](const std::complex<double>& x) { return std::cos<double>(x)/std::sin<double>(x); } },
+		{ intern("\\csc"), [](const std::complex<double>& x) { return 1.0/std::sin<double>(x); } },
+		{ intern("\\sec"), [](const std::complex<double>& x) { return 1.0/std::cos<double>(x); } },
+		{ intern("\\cot"), [](const std::complex<double>& x) { return std::cos<double>(x)/std::sin<double>(x); } },
 
-		{ name_set.find("\\arcsin"), std::asin<double>},
-		{ name_set.find("\\arccos"), std::acos<double>},
-		{ name_set.find("\\arctan"), std::atan<double>},
+		{ intern("\\arcsin"), std::asin<double>},
+		{ intern("\\arccos"), std::acos<double>},
+		{ intern("\\arctan"), std::atan<double>},
 		
 		// Hyperbolic functions.
 		
-		{ name_set.find("\\sinh"), std::sinh<double>},
-		{ name_set.find("\\cosh"), std::cosh<double>},
-		{ name_set.find("\\tanh"), std::tanh<double>},
+		{ intern("\\sinh"), std::sinh<double>},
+		{ intern("\\cosh"), std::cosh<double>},
+		{ intern("\\tanh"), std::tanh<double>},
 		
-		{ name_set.find("\\csch"), [](const std::complex<double>& x) { return 1.0/std::sinh<double>(x); } },
-		{ name_set.find("\\sech"), [](const std::complex<double>& x) { return 1.0/std::cosh<double>(x); } },
-		{ name_set.find("\\coth"), [](const std::complex<double>& x) { return std::cosh<double>(x)/std::sinh<double>(x); } },
+		{ intern("\\csch"), [](const std::complex<double>& x) { return 1.0/std::sinh<double>(x); } },
+		{ intern("\\sech"), [](const std::complex<double>& x) { return 1.0/std::cosh<double>(x); } },
+		{ intern("\\coth"), [](const std::complex<double>& x) { return std::cosh<double>(x)/std::sinh<double>(x); } },
 		
-		{ name_set.find("\\arcsinh"), std::asinh<double>},
-		{ name_set.find("\\arccosh"), std::acosh<double>},
-		{ name_set.find("\\arctanh"), std::atanh<double>},
+		{ intern("\\arcsinh"), std::asinh<double>},
+		{ intern("\\arccosh"), std::acosh<double>},
+		{ intern("\\arctanh"), std::atanh<double>},
 
 		// Logarithmic and exponential functions.
 		
-		{ name_set.find("\\log"),     std::log10<double>},
-		{ name_set.find("\\log2"),    [](const std::complex<double>& x) { return std::log<double>(x) / std::log<double>(2.0); } },
-		{ name_set.find("\\ln"),      std::log<double>  },
-		{ name_set.find("\\exp"),     std::exp<double>  },
-		{ name_set.find("\\sqrt"),    std::sqrt<double> },
+		{ intern("\\log"),     std::log10<double>},
+		{ intern("\\log2"),    [](const std::complex<double>& x) { return std::log<double>(x) / std::log<double>(2.0); } },
+		{ intern("\\ln"),      std::log<double>  },
+		{ intern("\\exp"),     std::exp<double>  },
+		{ intern("\\sqrt"),    std::sqrt<double> },
 
 		// Real and imaginary parts.
 
-		{ name_set.find("\\Re"),      [](const std::complex<double>& x) { return std::complex<double>(x.real(), 0); } },
-		{ name_set.find("\\Im"),      [](const std::complex<double>& x) { return std::complex<double>(x.imag(), 0); } },
+		{ intern("\\Re"),      [](const std::complex<double>& x) { return std::complex<double>(x.real(), 0); } },
+		{ intern("\\Im"),      [](const std::complex<double>& x) { return std::complex<double>(x.imag(), 0); } },
 
 		// Steps, absolute values and so on.
 		
-		{ name_set.find("\\abs"),    [](const std::complex<double>& x) { return std::complex<double>(std::abs<double>(x), 0.0); } } ,
-//		{ name_set.find("\\floor"),  [eps](const std::complex<double>& x) {
+		{ intern("\\abs"),    [](const std::complex<double>& x) { return std::complex<double>(std::abs<double>(x), 0.0); } } ,
+//		{ intern("\\floor"),  [eps](const std::complex<double>& x) {
 //			if(std::abs(x.imag()) > eps)
 //				throw ConsistencyException("Function floor called on complex number.");
 //			return std::complex<double>(std::floor(x.real()), 0.0);
 //			} },
-		{ name_set.find("\\sign"),   [](const std::complex<double>& x) {
+		{ intern("\\sign"),   [](const std::complex<double>& x) {
 			if(x.real()==0)     return  std::complex<double>(0.0,  0.0);
 			else if(x.real()<0) return  std::complex<double>(-1.0, 0.0);
 			else                return  std::complex<double>(1.0,  0.0);
 			} }
 	}; 
 
-	const auto n_pow  = name_set.find("\\pow");
-	const auto n_prod = name_set.find("\\prod");
-	const auto n_sum  = name_set.find("\\sum");
-	const auto n_pi   = name_set.find("\\pi");
-	const auto n_bigO = name_set.find("\\bigO");
+	const auto n_pow  = intern("\\pow");
+	const auto n_prod = intern("\\prod");
+	const auto n_sum  = intern("\\sum");
+	const auto n_pi   = intern("\\pi");
+	const auto n_bigO = intern("\\bigO");
 
 	NTensor lastval(0);
 

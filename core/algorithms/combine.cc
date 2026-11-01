@@ -65,10 +65,14 @@ Algorithm::result_t combine::apply(iterator& it)
 			iterator parent=tr.parent(start->second);
 			sibling_iterator ch=tr.begin(parent), last_part;
 			while(ch!=tr.end(parent) && ind_dummy.size()>0) {
+				// Find the entry for this particular index node (if any);
+				// the range may be empty (e.g. ch is not a dummy index,
+				// or was already removed), so check before dereferencing.
 				auto fnd2=ind_dummy.equal_range(Ex(ch));
 				auto fnd1=fnd2.first;
-				if(fnd1->second!=ch) ++fnd1;
-				if(fnd1->second==ch) {
+				while(fnd1!=fnd2.second && fnd1->second!=ch)
+					++fnd1;
+				if(fnd1!=fnd2.second) {
 					dummies.insert(dummies.end(), ch);
 					ind_dummy.erase(fnd1);
 					last_part=ch;

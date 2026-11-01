@@ -8,6 +8,11 @@ project(Cadabra)
 
 print_header("Configuring tests")
 
+# Per-test timeout in seconds. Sanitizer builds (e.g. AddressSanitizer)
+# are much slower, so allow overriding this at configure time with
+# -DCADABRA_TEST_TIMEOUT=<seconds>.
+set(CADABRA_TEST_TIMEOUT 30 CACHE STRING "Timeout in seconds for each test")
+
 add_custom_target(check COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure)
 
 # The tests run cadabra2-cli, which embeds Python; when the interpreter
@@ -64,7 +69,7 @@ foreach(NBTEST ${NBTESTS})
   add_test(${NBTEST} ${CMAKE_BINARY_DIR}/core/cadabra2-cli ${CDBOUT}/${NBTEST}.cdb)
   set_tests_properties(${NBTEST} PROPERTIES
     ENVIRONMENT "PYTHONPATH=${PYTHONPATH};LANG=en_US.UTF-8;LC_ALL=en_US.UTF-8;PYTHONIOENCODING=utf-8"
-    TIMEOUT     30
+    TIMEOUT     ${CADABRA_TEST_TIMEOUT}
     )
 endforeach()
 
@@ -121,7 +126,7 @@ foreach(RTEST ${RTESTS})
   # even if we did not do 'make install' yet.
   set_tests_properties(${RTEST} PROPERTIES
     ENVIRONMENT "PYTHONPATH=${PYTHONPATH};LANG=en_US.UTF-8;LC_ALL=en_US.UTF-8;PYTHONIOENCODING=utf-8"
-    TIMEOUT 30
+    TIMEOUT ${CADABRA_TEST_TIMEOUT}
   )    
 endforeach()
 
