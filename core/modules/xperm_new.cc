@@ -1660,7 +1660,9 @@ void dropdummyset(int firstd,
 	int i, j, itotal=0;
 
 	for (i=0; i<vdsl; i++) {
-		if (dummies[itotal]==firstd && vds[i]!=0) {
+		/* Check the set is non-empty before reading its first element:
+		   for trailing empty sets itotal can equal the array length. */
+		if (vds[i]!=0 && dummies[itotal]==firstd) {
 			for (j=itotal; j<*dl-2; j++) {
 				dummies[j] = dummies[j+2];
 				}
@@ -1680,8 +1682,10 @@ void droprepeatedset(int firstd,
 	int i, j, itotal=0;
 
 	for (i=0; i<vrsl; i++) {
-		if (repes[itotal]==firstd && vrs[i]!=0) {
-			for (j=itotal; j<*rl; j++) {
+		if (vrs[i]!=0 && repes[itotal]==firstd) {
+			/* Shift left by one; the last element is repes[*rl-1], so
+			   stop at *rl-1 (this used to read repes[*rl]). */
+			for (j=itotal; j<*rl-1; j++) {
 				repes[j] = repes[j+1];
 				}
 			vrs[i] = vrs[i]-1;

@@ -76,3 +76,16 @@ def test05():
    print("Test 05 passed")
 
 test05()
+
+def test06():
+   # Functions whose names had not been used in any expression before:
+   # the evaluator's function table used to be built from name_set.find(),
+   # which returns end() for those (undefined behaviour in the lookup).
+   import numpy as np, math
+   xv = np.array([0.5, 1.5])
+   res = np.array( nevaluate($\sech(x) + \coth(x) + \arcsinh(x)$, {$x$: xv}) )
+   want = 1/np.cosh(xv) + 1/np.tanh(xv) + np.arcsinh(xv)
+   assert(np.max(np.abs(res - want)) < 1e-6)
+   print("Test 06 passed")
+
+test06()

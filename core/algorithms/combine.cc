@@ -39,7 +39,7 @@ Algorithm::result_t combine::apply(iterator& it)
 
 	while(ind_dummy.begin()!=ind_dummy.end()) {
 		bool found=false;
-		IndexClassifier::index_map_t::iterator start=ind_dummy.begin(), backup;
+		IndexClassifier::index_map_t::iterator start=ind_dummy.begin(), backup=ind_dummy.end();
 		while(!found && start!=ind_dummy.end()) {
 			iterator parent=tr.parent(start->second);
 			sibling_iterator ch=tr.begin(parent), last_part;
@@ -60,21 +60,30 @@ Algorithm::result_t combine::apply(iterator& it)
 			}
 		// As a backup, we use a dummy index with only non-dummies to the right
 		if(!found) start=backup;
+		if(start==ind_dummy.end())
+			throw InternalError("combine: cannot find a starting index for the contraction.");
 		bool paired=true;
 		while(paired && start!=ind_dummy.end()) {
 			iterator parent=tr.parent(start->second);
 			sibling_iterator ch=tr.begin(parent), last_part;
+			bool have_last_part=false;
 			while(ch!=tr.end(parent) && ind_dummy.size()>0) {
-				auto fnd2=ind_dummy.equal_range(Ex(ch));
-				auto fnd1=fnd2.first;
-				if(fnd1->second!=ch) ++fnd1;
-				if(fnd1->second==ch) {
-					dummies.insert(dummies.end(), ch);
-					ind_dummy.erase(fnd1);
-					last_part=ch;
+				// Find the entry for this very index node (the range also
+				// contains its partner); the range may also be empty.
+				auto range=ind_dummy.equal_range(Ex(ch));
+				for(auto fnd1=range.first; fnd1!=range.second; ++fnd1) {
+					if(fnd1->second==ch) {
+						dummies.insert(dummies.end(), ch);
+						ind_dummy.erase(fnd1);
+						last_part=ch;
+						have_last_part=true;
+						break;
+						}
 					}
 				++ch;
 				}
+			if(!have_last_part)
+				throw InternalError("combine: dummy index not found in its factor.");
 			auto fnd=ind_dummy.find(Ex(last_part));
 			if(fnd==ind_dummy.end()) {
 				last_part->flip_parent_rel();
