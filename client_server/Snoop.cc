@@ -589,11 +589,10 @@ std::string Snoop::last_seen_version(std::string machine_id)
 
 bool Snoop::authenticate(std::function<void (std::string, bool)> f, std::string user, std::string pass, bool always_reauth)
    {
-   // Wait for the websocket client thread to have spun up.
+   // Wait for the websocket client thread to have spun up (with a
+	// predicate, so that a spurious wakeup does not end the wait early).
 	std::unique_lock<std::mutex> lock(connection_mutex);
-	if(connection_is_open==false && connection_attempt_failed==false) {
-		connection_cv.wait(lock);
-		}
+	connection_cv.wait(lock, [this]{ return connection_is_open || connection_attempt_failed; });
 
 	authentication_callback=f;
 	
@@ -610,14 +609,13 @@ bool Snoop::authenticate(std::function<void (std::string, bool)> f, std::string 
 	                     
 	if(ticket_uuid.size()!=0 && user=="" && pass=="") { // have ticket and want to login without name/pass
 		SNOOPDEBUG( std::cerr << "Have a ticket already, re-validating." << std::endl; );
-	   std::ostringstream pack;
-	   pack << "{ \"authenticate\": {"
-	        << "     \"ticket_uuid\": \"" << ticket_uuid << "\"} } \n";
+	   nlohmann::json pack;
+	   pack["authenticate"]["ticket_uuid"]=ticket_uuid;
 	   if(!connection_is_open) {
 		   SNOOPDEBUG( std::cerr << "Connection not open, cannot verify ticket, allowed through." << std::endl; );
 		   }
 	   else {
-		   wsclient.send(pack.str());
+		   wsclient.send(pack.dump()+"\n");
 		   }
 	   return true;
 	   }
@@ -638,16 +636,18 @@ bool Snoop::authenticate(std::function<void (std::string, bool)> f, std::string 
 		// Send authentication request to server, asking for ticket. Then exit, as
 		// the ticket will come back async.
 	   SNOOPDEBUG( std::cerr << "No ticket yet, requesting one with login/pass." << std::endl; );
-	   std::ostringstream pack;
-	   pack << "{ \"authenticate\": {"
-	        << "     \"user\": \"" << user << "\", \"password\": \"" << pass << "\" } } \n";
+	   // Built with the JSON library, so that quotes or backslashes in the
+	   // user name or password cannot break (or inject into) the message.
+	   nlohmann::json pack;
+	   pack["authenticate"]["user"]=user;
+	   pack["authenticate"]["password"]=pass;
 
 	   if(!connection_is_open) {
 		   SNOOPDEBUG( std::cerr << "No connection, cannot verify login credentials" << std::endl; );
 		   // FIXME: need a 'false' which also shows that we have not been able to verify.
 		   }
 	   else {
-		   wsclient.send(pack.str());
+		   wsclient.send(pack.dump()+"\n");
 		   }
 	   return false;
 	   }
@@ -690,6 +690,9 @@ std::string Snoop::get_local_ticket()
 
 void Snoop::set_local_ticket(std::string ticket_uuid)
    {
+	// Runs on the I/O thread; every other user of the databases holds this.
+	std::lock_guard<std::recursive_mutex> lock(sqlite_mutex);
+
    // First delete local ticket.
    
    std::ostringstream ss;
@@ -758,6 +761,7 @@ Snoop::Ticket Snoop::is_ticket_valid(std::string ticket_uuid)
 
 int Snoop::store_ticket(std::string ticket_uuid, int user_id, bool valid)
    {
+	std::lock_guard<std::recursive_mutex> lock(sqlite_mutex);
    assert(auth_db!=0);
 
    std::ostringstream ss;
@@ -1147,19 +1151,19 @@ void Snoop::sync_logs_with_server(bool from_wsthread)
 	ssc << "select log_id, client_log_id, id, create_millis, loc_file, loc_line, loc_method, type, message, server_status, session_uuid, create_timezone "
 		 << "from logs where server_status=0";
 	if(local_types.size()>0) {
+		// One placeholder per type; the values are bound below rather
+		// than pasted into the SQL text.
 		ssc << " and type not in (";
-		bool first=true;
-		for(const auto& lt: local_types) {
-			if(first) first=false;
-			else      ssc << ", ";
-			// FIXME: sql injection!
-			ssc << "'" << lt << "'";
-			}
+		for(size_t i=0; i<local_types.size(); ++i)
+			ssc << (i==0 ? "?" : ", ?");
 		ssc << ")";
 		}
 
 	int sres = sqlite3_prepare(db, ssc.str().c_str(), -1, &statement, NULL);
 	if(sres==SQLITE_OK) {
+		int pos=1;
+		for(const auto& lt: local_types)
+			sqlite3_bind_text(statement, pos++, lt.c_str(), lt.size(), SQLITE_TRANSIENT);
 		bool first=true;
 		bool go=true;
 		while(go) {
@@ -1385,10 +1389,15 @@ void Snoop::on_client_fail(const boost::beast::error_code& ec)
 	
 	SNOOPDEBUG( std::cerr << "Snoop: connection failed: " << error_reason << std::endl;	);
 	// Clients may be waiting for the connection to open, but we may
-	// never get to that stage. Signal them to move on.
-	std::unique_lock<std::mutex> lock(connection_mutex);
-	connection_attempt_failed=true;
-	connection_cv.notify_all();
+	// never get to that stage. Signal them to move on. Only hold the lock
+	// for that: the callbacks, the sleep and the reconnect below must not
+	// block everyone else who needs connection_mutex.
+		{
+		std::unique_lock<std::mutex> lock(connection_mutex);
+		connection_is_open=false;
+		connection_attempt_failed=true;
+		connection_cv.notify_all();
+		}
 
 	// Run the callback
 	bool retry=true;
@@ -1398,10 +1407,16 @@ void Snoop::on_client_fail(const boost::beast::error_code& ec)
 			authentication_callback("", false);
 		}
 	
-	// Attempt to re-open.
+	// Attempt to re-open, after a pause. Wait on the condition variable
+	// rather than sleeping, so that the destructor can end the pause (and
+	// the retries) straight away instead of waiting for it.
 	if(retry && this_app_.app_name!="SnoopServer") {
 	  SNOOPDEBUG( std::cerr << "Snoop: sleeping a little before attempting reconnect" << std::endl;	);
-	  sleep(3);
+		{
+		std::unique_lock<std::mutex> lock(connection_mutex);
+		if(connection_cv.wait_for(lock, std::chrono::seconds(3), [this]{ return stopping; }))
+			return;
+		}
 	  SNOOPDEBUG( std::cerr << "Snoop: attempting to re-open connection" << std::endl; );
 	  try_connect();
 	  }
@@ -1419,7 +1434,11 @@ void Snoop::on_client_close()
 		 SNOOPDEBUG( std::cerr << "Snoop: connection closed" << std::endl; );
 	  }
 
-	// Attempt to re-open.
+	// Attempt to re-open, unless we are shutting down.
+		{
+		std::unique_lock<std::mutex> lock(connection_mutex);
+		if(stopping) return;
+		}
 	if(this_app_.app_name!="SnoopServer") {
 	  SNOOPDEBUG( std::cerr << "Snoop: attempting to re-open connection" << std::endl; );
 	  try_connect();
@@ -1554,17 +1573,26 @@ Snoop::~Snoop()
 	// can skip all that.
 
    // std::cerr << "|" << this_app_.app_name << "|" << std::endl;
-	std::unique_lock<std::mutex> lock(connection_mutex);
-	// std::cerr << "unlocked" << std::endl;
-	
 	if(this_app_.app_name!="" && this_app_.app_name!="SnoopServer") {
-		if(connection_is_open==false && connection_attempt_failed==false) {
-			connection_cv.wait(lock);
+		// Only wait if the I/O thread was started: otherwise nobody will
+		// ever signal. Use a predicate, so that a spurious wakeup does not
+		// end the wait early.
+		if(wsclient_thread.joinable()) {
+			std::unique_lock<std::mutex> lock(connection_mutex);
+			connection_cv.wait(lock, [this]{ return connection_is_open || connection_attempt_failed; });
 			}
+		// Do not hold connection_mutex from here on: the I/O thread's
+		// handlers take it, and we are about to wait for that thread.
 		
 		sync_with_server();
 		
-		if(db!=0) { // If the database is not open the wsclient won't be running either
+		if(db!=0 && wsclient_thread.joinable()) { // If the database is not open the wsclient won't be running either
+			// End any pending reconnect pause in on_client_fail.
+				{
+				std::unique_lock<std::mutex> lock(connection_mutex);
+				stopping=true;
+				connection_cv.notify_all();
+				}
 			wsclient.stop();
 			wsclient_thread.join();
 			}
@@ -1733,37 +1761,39 @@ Snoop::AppEntry::AppEntry(const std::string& uuid_, uint64_t create_millis_, uin
 
 std::string Snoop::AppEntry::to_json(bool human_readable) const
 	{
-	std::ostringstream str;
-	str << "{ \"id\": " << id  
-		 << ", \"uuid\": \"" << uuid << "\"";
+	// Built with the JSON library: strings such as machine_id (from uname)
+	// or user_id are not ours to trust to be free of quotes or backslashes.
+	nlohmann::json json;
+	json["id"]=id;
+	json["uuid"]=uuid;
 	if(human_readable) {	
 		time_t tt = std::chrono::system_clock::to_time_t(u64_to_time(create_millis));
 		tm utc_tm = *localtime(&tt);
-		str << ", \"time\": \"" 
-			 << std::setfill('0') 
+		std::ostringstream str;
+		str << std::setfill('0') 
 			 << std::setw(2) << utc_tm.tm_hour << ":" 
 			 << std::setw(2) << utc_tm.tm_min << ":" 
-			 << std::setw(2) << utc_tm.tm_sec << "\""
-			 << ", \"date\": \""
-			 << std::setw(2) << utc_tm.tm_mday << "/" 
+			 << std::setw(2) << utc_tm.tm_sec;
+		json["time"]=str.str();
+		str.str("");
+		str << std::setw(2) << utc_tm.tm_mday << "/" 
 			 << std::setw(2) << utc_tm.tm_mon+1 << "/" 
-			 << std::setw(4) << utc_tm.tm_year+1900
-			 << "\"";
+			 << std::setw(4) << utc_tm.tm_year+1900;
+		json["date"]=str.str();
 		}
-	str << ", \"create_millis\": " << create_millis
-		 << ", \"create_timezone\": " << create_timezone
-		 << ", \"receive_millis\": " << receive_millis
-		 << ", \"pid\": " << pid 
-		 << ", \"ip_address\": \"" << ip_address << "\""
-		 << ", \"machine_id\": \"" << machine_id << "\""
-		 << ", \"app_name\": \"" << app_name << "\""
-		 << ", \"app_version\": \"" << app_version << "\""
-		 << ", \"user_id\": \"" << user_id << "\""
-		 << ", \"server_status\": " << server_status
-		 << ", \"connected\": " << connected
-		 << "}";
+	json["create_millis"]=create_millis;
+	json["create_timezone"]=create_timezone;
+	json["receive_millis"]=receive_millis;
+	json["pid"]=pid;
+	json["ip_address"]=ip_address;
+	json["machine_id"]=machine_id;
+	json["app_name"]=app_name;
+	json["app_version"]=app_version;
+	json["user_id"]=user_id;
+	json["server_status"]=server_status;
+	json["connected"]=connected ? 1 : 0; // was always sent as a number
 
-	return str.str();
+	return json.dump();
 	}
 
 Snoop::PayLoad::PayLoad()

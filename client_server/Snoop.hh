@@ -333,6 +333,7 @@ namespace snoop {
 			std::mutex                      connection_mutex;
 			std::condition_variable         connection_cv;
 			bool                            connection_is_open, connection_attempt_failed;
+			bool                            stopping=false; // set by the destructor; ends reconnect attempts
 
 	      // Main entry point for the I/O thread.
 	      void io_thread_run();
