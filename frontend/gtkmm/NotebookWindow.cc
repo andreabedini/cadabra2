@@ -1205,13 +1205,22 @@ void NotebookWindow::process_data()
 
 void NotebookWindow::on_connect()
 	{
-	// std::cerr << "kernel connected" << std::endl;
-	
-	std::lock_guard<std::mutex> guard(status_mutex);
-	kernel_string = "connected";
-	progress_string = "Idle";
-//	dispatcher.emit();
+	// Called on the compute thread, so only record what happened; the
+	// actual work (which touches widgets and sends input through the
+	// compute thread) is done on the GUI thread in on_kernel_connected().
+		{
+		std::lock_guard<std::mutex> guard(status_mutex);
+		kernel_string = "connected";
+		progress_string = "Idle";
+		kernel_connect_pending = true;
+		}
 	dispatch_update_status.emit();
+	dispatcher.emit();
+	}
+
+void NotebookWindow::on_kernel_connected()
+	{
+	// GUI thread.
 	console.initialize();
 	// prefs.python_path might end in a backslash which will raise an EOF syntax error, so we add a
 	// semicolon to the end of it and then remove the (empty) last element of the resulting list
@@ -1245,17 +1254,15 @@ void NotebookWindow::on_network_error()
 
 void NotebookWindow::on_kernel_runstatus(bool running)
 	{
-	std::lock_guard<std::mutex> guard(status_mutex);
-	kernel_spinner_status=running;
-	if(!running) {
-		if(follow_mode && follow_last_cell!=doc.end()) {
-			follow_cell=doc.end();
-			// std::cerr << "RUNSTATUS scroll" << std::endl;
-			scroll_cell_into_view(follow_last_cell);
-			follow_last_cell=doc.end();
-			}
+	// Called on the compute thread (and sometimes the GUI thread); the
+	// follow-mode scrolling touches the document and widgets, so it is
+	// done in process_todo_queue on the GUI thread.
+		{
+		std::lock_guard<std::mutex> guard(status_mutex);
+		kernel_spinner_status=running;
+		if(!running)
+			follow_scroll_pending=true;
 		}
-	// FIXME: WHY would we need to process the queue here?
 	dispatcher.emit();
 	}
 
@@ -1270,8 +1277,15 @@ void NotebookWindow::process_todo_queue()
 	running=true;
 
 	// Update the status/kernel messages into the corresponding widgets.
+	bool connect_pending, scroll_pending;
+	std::string kernel_status;
 		{
 		std::lock_guard<std::mutex> guard(status_mutex);
+		connect_pending = kernel_connect_pending;
+		scroll_pending  = follow_scroll_pending;
+		kernel_connect_pending = false;
+		follow_scroll_pending  = false;
+		kernel_status = kernel_string;
 		kernel_label.set_text("Server: " + kernel_string);
 		if(compute)
 			mainbox.set_sensitive(compute->kernel_is_connected());
@@ -1286,6 +1300,15 @@ void NotebookWindow::process_todo_queue()
 			}
 		}
 
+	if(connect_pending)
+		on_kernel_connected();
+
+	if(scroll_pending && follow_mode && follow_last_cell!=doc.end()) {
+		follow_cell=doc.end();
+		scroll_cell_into_view(follow_last_cell);
+		follow_last_cell=doc.end();
+		}
+
 	// Perform any ActionBase actions.
 	process_action_queue();
 
@@ -1294,7 +1317,7 @@ void NotebookWindow::process_todo_queue()
 	// dispatcher.emit() is called when the dialog is closed.
 	running=false;
 
-	if(crash_window_hidden && kernel_string=="not connected") {
+	if(crash_window_hidden && kernel_status=="not connected") {
 		crash_window_hidden=false;
 		Gtk::MessageDialog md("Kernel crashed", false, cdb::MESSAGE_WARNING, cdb::BUTTONS_OK, true);
 		md.set_transient_for(*this);

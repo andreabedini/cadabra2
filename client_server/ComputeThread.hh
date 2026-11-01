@@ -2,6 +2,10 @@
 #pragma once
 
 #include <signal.h>
+#include <atomic>
+#include <cstdio>
+#include <map>
+#include <mutex>
 #include <thread>
 #include <set>
 #include <glibmm/spawn.h>
@@ -106,7 +110,9 @@ namespace cadabra {
 			int number_of_cells_executing(void) const;
 
 			/// Terminate the compute thread, in preparation for shutting
-			/// down the client altogether.
+			/// down the client altogether. Makes run() return; the caller
+			/// should then join the thread. A server we started ourselves
+			/// is killed when this object is destroyed.
 
 			void terminate();
 
@@ -128,11 +134,24 @@ namespace cadabra {
 			// cell can be queued multiple times for running; this is the
 			// integer in the map.
 
-			std::map<DataCell::id_t, int> running_cells;
+			//
+			// Threading: the GUI thread calls execute_cell, complete, stop
+			// etc., while the websocket handlers (on_open, on_message, ...)
+			// run on the thread which calls run(). State shared between
+			// the two is either atomic or guarded by `state_mutex`. Never
+			// call into the GUI or DocumentThread while holding it.
 
-			// WebSocket++ things.
-			websocket_client            wsclient;
-			bool                        connection_is_open, restarting_kernel;
+			mutable std::mutex            state_mutex;
+			std::map<DataCell::id_t, int> running_cells;        // guarded by state_mutex
+
+			websocket_client              wsclient;
+			std::atomic<bool>             connection_is_open, restarting_kernel;
+			int                           consecutive_failures; // network thread only
+
+			/// Snapshot of the authentication token of the current server.
+			std::string auth_token() const;
+			/// Send a request to the server, logging it if CADABRA_SHOW_SENT is set.
+			void send_request(const nlohmann::json& req);
 
 			void init();
 			void try_connect();
@@ -141,6 +160,7 @@ namespace cadabra {
 			void on_fail(const boost::beast::error_code&);
 			void on_close();
 			void on_message(const std::string& msg);
+			void handle_message(const std::string& msg);
 
 			void cell_finished_running(DataCell::id_t);
 
@@ -148,7 +168,7 @@ namespace cadabra {
 			/// report the status of each cell to the GUI.
 			void all_cells_nonrunning();
 
-			std::set<uint64_t> interactive_cells;
+			std::set<uint64_t> interactive_cells;  // guarded by state_mutex
 
 			/// Terminate the server we spawned ourselves, if any, and release
 			/// its handles. Safe to call repeatedly, and a no-op when we did not
@@ -156,9 +176,13 @@ namespace cadabra {
 			/// else's process.
 			void kill_server();
 
-			// Self-started server
+			// Self-started server. Only touched on the network thread, and
+			// in the destructor after that thread has been joined; except
+			// for `port` and `authentication_token`, which are also read on
+			// the GUI thread and therefore guarded by state_mutex.
 			Glib::Pid       server_pid;
 			int             server_stdout, server_stderr;
+			FILE           *server_stdout_file;
 			unsigned short  port;
 			std::string     authentication_token;
 			int             forced_server_port;

@@ -24,8 +24,9 @@
 using namespace cadabra;
 
 ComputeThread::ComputeThread(int server_port, std::string token, std::string ip_address)
-	: gui(0), docthread(0), connection_is_open(false), restarting_kernel(false), server_pid(0),
-	  server_stdout(0), server_stderr(0), forced_server_port(server_port), forced_server_token(token),
+	: gui(nullptr), docthread(nullptr), connection_is_open(false), restarting_kernel(false),
+	  consecutive_failures(0), server_pid(0), server_stdout(0), server_stderr(0),
+	  server_stdout_file(nullptr), port(0), forced_server_port(server_port), forced_server_token(token),
 	  forced_server_ip_address(ip_address)
 	{
 	// The ComputeThread constructor (but _not_ the run() member!) is
@@ -37,13 +38,32 @@ ComputeThread::ComputeThread(int server_port, std::string token, std::string ip_
 
 ComputeThread::~ComputeThread()
 	{
+	// The network thread has been joined by now (see terminate()), so
+	// nothing else can be touching the server state.
 	kill_server();
 	}
 
 void ComputeThread::set_master(GUIBase *b, DocumentThread *d)
 	{
+	// Must be called before run() is started on its thread.
 	gui=b;
 	docthread=d;
+	}
+
+std::string ComputeThread::auth_token() const
+	{
+	std::lock_guard<std::mutex> lock(state_mutex);
+	return authentication_token;
+	}
+
+void ComputeThread::send_request(const nlohmann::json& req)
+	{
+	std::ostringstream str;
+	str << req << std::endl;
+	if(getenv("CADABRA_SHOW_SENT")) {
+		std::cerr << "SENT: " << req.dump(3) << std::endl;
+		}
+	wsclient.send(str.str());
 	}
 
 void ComputeThread::init()
@@ -58,10 +78,15 @@ void ComputeThread::try_connect()
 	wsclient.set_close_handler(std::bind(&ComputeThread::on_close, this));
 	wsclient.set_message_handler(std::bind(&ComputeThread::on_message, this, std::placeholders::_1));
 
+	unsigned short current_port;
+		{
+		std::lock_guard<std::mutex> lock(state_mutex);
+		current_port=port;
+		}
 	std::ostringstream uristr;
 	// Never let the global locale group the digits of a port number.
 	uristr.imbue(std::locale::classic());
-	uristr << "ws://" << (forced_server_ip_address.empty() ? "127.0.0.1" : forced_server_ip_address) << ":" << port;
+	uristr << "ws://" << (forced_server_ip_address.empty() ? "127.0.0.1" : forced_server_ip_address) << ":" << current_port;
 	wsclient.connect(uristr.str());
 
 	// std::cerr << "cadabra-client: connect done" << std::endl;
@@ -75,15 +100,33 @@ void ComputeThread::run()
 	try_spawn_server();
 	try_connect();
 
-	// Enter run loop, which will never terminate anymore. The on_fail and on_close
-	// handlers will re-try to establish connections when they go bad.
+	// Enter run loop, which only terminates when terminate() is called. The
+	// on_fail and on_close handlers will re-try to establish connections
+	// when they go bad. An exception escaping a handler would otherwise
+	// end this thread and with it the whole program (std::terminate), so
+	// log it and keep going.
 
-	wsclient.run();
+	for(;;) {
+		try {
+			wsclient.run();
+			return;
+			}
+		catch(std::exception& ex) {
+			std::cerr << "cadabra-client: unexpected exception on network thread: "
+						 << ex.what() << std::endl;
+			}
+		}
 	}
 
 void ComputeThread::kill_server()
 	{
-	if(server_stdout!=0) {
+	if(server_stdout_file!=nullptr) {
+		fclose(server_stdout_file); // also closes server_stdout
+		server_stdout_file=nullptr;
+		server_stdout=0;
+		server_stderr=0;
+		}
+	else if(server_stdout!=0) {
 		close(server_stdout);
 		// close(server_stderr);
 		server_stdout=0;
@@ -126,17 +169,11 @@ void ComputeThread::kill_server()
 
 void ComputeThread::terminate()
 	{
+	// Called on the GUI thread. Only stop the network loop here; the
+	// server itself is killed in the destructor, once the network thread
+	// (which may be in the middle of spawning or killing a server in
+	// on_fail) has been joined.
 	wsclient.stop();
-
-	// If we have started the server ourselves, stop it now so we do
-	// not leave mess behind.
-	// http://riccomini.name/posts/linux/2012-09-25-kill-subprocesses-linux-bash/
-
-	// A connected server is already on its way out (Server::run() defaults to
-	// exit_on_disconnect=true and wsclient.stop() above closed the connection),
-	// but one that never accepted a connection would linger forever, so make
-	// sure of it either way.
-	kill_server();
 	}
 
 bool ComputeThread::kernel_is_connected() const
@@ -146,22 +183,28 @@ bool ComputeThread::kernel_is_connected() const
 
 void ComputeThread::all_cells_nonrunning()
 	{
-	for(auto it: running_cells) {
-		std::shared_ptr<ActionBase> rs_action =
-		   std::make_shared<ActionSetRunStatus>(it.first, false);
-		docthread->queue_action(rs_action);
+	std::map<DataCell::id_t, int> cells;
+		{
+		std::lock_guard<std::mutex> lock(state_mutex);
+		cells.swap(running_cells);
+		}
+	if(docthread) {
+		for(auto it: cells) {
+			std::shared_ptr<ActionBase> rs_action =
+				std::make_shared<ActionSetRunStatus>(it.first, false);
+			docthread->queue_action(rs_action);
+			}
 		}
 	if(gui) {
 		gui->process_data();
 		gui->on_kernel_runstatus(false);
 		}
-	running_cells.clear();
 	}
 
 void ComputeThread::on_fail(const boost::beast::error_code& ec)
 	{
 	if(!restarting_kernel) {
-		std::cerr << "cadabra-client: connection to server on port " << port << " failed, " << ec.message() << std::endl;
+		std::cerr << "cadabra-client: connection to server failed, " << ec.message() << std::endl;
 		}
 	connection_is_open=false;
 	all_cells_nonrunning();
@@ -174,6 +217,13 @@ void ComputeThread::on_fail(const boost::beast::error_code& ec)
 	// on_close() has already told the GUI what is going on.
 	if(gui && !restarting_kernel)
 		gui->on_network_error();
+
+	// The first failure (e.g. the server exiting for a kernel restart) is
+	// retried straight away; after that, do not spin at full speed when
+	// the server cannot be started or reached.
+	if(consecutive_failures>0)
+		std::this_thread::sleep_for(std::chrono::seconds(1));
+	++consecutive_failures;
 
 	try_spawn_server();
 	try_connect();
@@ -190,6 +240,7 @@ void ComputeThread::try_spawn_server()
 	// std::cerr << "cadabra-client: spawning server" << std::endl;
 
 	if(forced_server_port!=0) {
+		std::lock_guard<std::mutex> lock(state_mutex);
 		port=forced_server_port;
 		authentication_token=forced_server_token;
 		return;
@@ -242,20 +293,32 @@ void ComputeThread::try_spawn_server()
 		//										  &server_stderr);
 
 		char buffer[100];
-		FILE *f = fdopen(server_stdout, "r");
-		if(fscanf(f, "%99s", buffer)!=1) {
-			throw std::logic_error("Failed to read port from server.");
+		// Keep the FILE so that kill_server() can fclose it; closing only
+		// the descriptor would leak the FILE on every respawn.
+		server_stdout_file = fdopen(server_stdout, "r");
+		if(server_stdout_file==nullptr)
+			throw std::runtime_error("Failed to read from server.");
+		if(fscanf(server_stdout_file, "%99s", buffer)!=1) {
+			throw std::runtime_error("Failed to read port from server.");
 			}
-		port = atoi(buffer);
-		if(fscanf(f, "%99s", buffer)!=1) {
-			throw std::logic_error("Failed to read authentication token from server.");
+		unsigned short new_port = atoi(buffer);
+		if(fscanf(server_stdout_file, "%99s", buffer)!=1) {
+			throw std::runtime_error("Failed to read authentication token from server.");
 			}
+		std::lock_guard<std::mutex> lock(state_mutex);
+		port = new_port;
 		authentication_token=std::string(buffer);
-		// std::cerr << "auth token: " << authentication_token << std::endl;
 		}
 	catch(Glib::SpawnError& err) {
 		std::cerr << "Failed to start server " << argv[0] << ": " << err.what() << std::endl;
-		// FIXME: cannot just fall through, the server is not up!
+		// The connection attempt that follows will fail, and on_fail()
+		// will try again.
+		}
+	catch(std::exception& err) {
+		// E.g. the server exited before reporting its port (broken Python
+		// environment). This runs on the network thread, so letting it
+		// escape would end the program.
+		std::cerr << "Failed to start server " << argv[0] << ": " << err.what() << std::endl;
 		}
 	}
 
@@ -263,6 +326,7 @@ void ComputeThread::on_open()
 	{
 	connection_is_open=true;
 	restarting_kernel=false;
+	consecutive_failures=0;
 	if(gui) {
 		gui->on_connect();
 		gui->on_kernel_runstatus(false);
@@ -314,25 +378,44 @@ void ComputeThread::cell_finished_running(DataCell::id_t id)
 		// response to e.g. a slider update). Ignore.
 		}
 	else {
-		auto it=running_cells.find(id);
-		if(it==running_cells.end()) {
-			throw std::logic_error("Cannot find cell with id = "+std::to_string(id.id));
+		bool finished=false;
+			{
+			std::lock_guard<std::mutex> lock(state_mutex);
+			auto it=running_cells.find(id);
+			if(it==running_cells.end()) {
+				throw std::logic_error("Cannot find cell with id = "+std::to_string(id.id));
+				}
+			if(it->second==1) {
+				running_cells.erase(it);
+				finished=true;
+				}
+			else
+				it->second -= 1;
 			}
 		
-		if(it->second==1) {
+		if(finished) {
 			// Mark this cell as no longer running.
 			std::shared_ptr<ActionBase> rs_action =
 				std::make_shared<ActionSetRunStatus>(id, false);
 			docthread->queue_action(rs_action);
-
-			running_cells.erase(it);
 			}
-		else
-			it->second -= 1;
 		}
 	}
 
 void ComputeThread::on_message(const std::string& msg)
+	{
+	// Runs on the network thread. Anything thrown here would escape the
+	// websocket loop, so contain it: a message we cannot handle is logged
+	// and dropped.
+	try {
+		handle_message(msg);
+		}
+	catch(std::exception& ex) {
+		std::cerr << "cadabra-client: cannot handle message from server: " << ex.what() << std::endl;
+		}
+	}
+
+void ComputeThread::handle_message(const std::string& msg)
 	{
 	// Parse the JSON message.
 	nlohmann::json root;
@@ -367,7 +450,7 @@ void ComputeThread::on_message(const std::string& msg)
 	else
 		parent_id.created_by_client=false;
 	DataCell::id_t cell_id;
-	cell_id.id = header["cell_id"].get<uint64_t>();
+	cell_id.id = header.value("cell_id", uint64_t(0));
 	if(header.value("cell_origin", "")=="client")
 		cell_id.created_by_client=true;
 	else
@@ -375,11 +458,15 @@ void ComputeThread::on_message(const std::string& msg)
 	// std::cerr << "received cell with id " << cell_id.id << std::endl;
 
 	// Determine if this refers to a special cell in the interactive console.
-	if (interactive_cells.find(parent_id.id) != interactive_cells.end()) {
-		interactive_cells.insert(cell_id.id);
-		docthread->on_interactive_output(root);
-	}
-	else if (interactive_cells.find(cell_id.id) != interactive_cells.end()) {
+	bool parent_is_interactive, cell_is_interactive;
+		{
+		std::lock_guard<std::mutex> lock(state_mutex);
+		parent_is_interactive = interactive_cells.count(parent_id.id)>0;
+		if(parent_is_interactive)
+			interactive_cells.insert(cell_id.id);
+		cell_is_interactive = interactive_cells.count(cell_id.id)>0;
+		}
+	if (parent_is_interactive || cell_is_interactive) {
 		docthread->on_interactive_output(root);
 		}
 	else if (msg_type.find("csl_") == 0) {
@@ -398,11 +485,13 @@ void ComputeThread::on_message(const std::string& msg)
 		// std::cerr << "received completion of " << content["original"] << " -> " << content["completed"] << std::endl;
 
 		// Finally, the action to add the output cell.
-		std::string toadd=content["completed"].get<std::string>();
-		if(toadd.size()>0) {
-			toadd=toadd.substr(content["original"].get<std::string>().size());
-			int pos=content["position"].get<int>();
-			int alternative=content["alternative"].get<int>();
+		std::string toadd    = content.value("completed", "");
+		std::string original = content.value("original", "");
+		// The completion is expected to extend the original text.
+		if(toadd.size()>original.size()) {
+			toadd=toadd.substr(original.size());
+			int pos=content.value("position", 0);
+			int alternative=content.value("alternative", 0);
 			std::shared_ptr<ActionBase> action =
 				std::make_shared<ActionCompleteText>(cell_id, pos, toadd, alternative);
 			docthread->queue_action(action);
@@ -410,7 +499,7 @@ void ComputeThread::on_message(const std::string& msg)
 		}
 	else {
 		try {
-			bool finished = header["last_in_sequence"].get<bool>();
+			bool finished = header.at("last_in_sequence").get<bool>();
 
 			if (finished) {
 				if(parent_id.id!=0) {
@@ -518,19 +607,17 @@ void ComputeThread::on_message(const std::string& msg)
 					}
 				}
 			}
-		catch (std::logic_error& ex) {
-			// WARNING: if the server sends
+		catch (std::exception& ex) {
+			// Includes nlohmann::json exceptions for malformed messages.
 			std::cerr << "cadabra-client: trouble processing server response: " << ex.what() << std::endl;
 			}
 		}
 
 	// Update kernel busy indicator depending on number of running cells.
-	if(number_of_cells_executing()>0)
-		gui->on_kernel_runstatus(true);
-	else
-		gui->on_kernel_runstatus(false);
-
-	gui->process_data();
+	if(gui) {
+		gui->on_kernel_runstatus(number_of_cells_executing()>0);
+		gui->process_data();
+		}
 	}
 
 void ComputeThread::execute_interactive(uint64_t id, const std::string& code)
@@ -550,17 +637,17 @@ void ComputeThread::execute_interactive(uint64_t id, const std::string& code)
 	header["interactive"] = true;
 	content["code"]       = code.c_str();
 
-	req["auth_token"] = authentication_token;
+	req["auth_token"] = auth_token();
 	req["header"]     = header;
 	req["content"]    = content;
 
-	std::ostringstream oss;
-	oss << req << std::endl;
-	if(getenv("CADABRA_SHOW_SENT")) {
-		std::cerr << "SENT: " << req.dump(3) << std::endl;
+	// Register before sending: the reply arrives on the network thread
+	// and may otherwise be processed before we get here.
+		{
+		std::lock_guard<std::mutex> lock(state_mutex);
+		interactive_cells.insert(id);
 		}
-	wsclient.send(oss.str());
-	interactive_cells.insert(id);
+	send_request(req);
 	}
 
 void ComputeThread::execute_cell(DTree::iterator it, std::string no_assign, std::vector<uint64_t> output_cell_ids)
@@ -595,11 +682,10 @@ void ComputeThread::execute_cell(DTree::iterator it, std::string no_assign, std:
 	// For a code cell, construct a server request message and then
 	// send the cell to the server.
 	if(it->cell_type==DataCell::CellType::python) {
-		auto rit=running_cells.find(dc.id());
-		if(rit==running_cells.end())
-			running_cells[dc.id()]=1;
-		else
-			rit->second += 1;
+			{
+			std::lock_guard<std::mutex> lock(state_mutex);
+			running_cells[dc.id()] += 1;
+			}
 
 		// Schedule an action to update the running status of this cell.
 		std::shared_ptr<ActionBase> rs_action =
@@ -615,19 +701,14 @@ void ComputeThread::execute_cell(DTree::iterator it, std::string no_assign, std:
 			header["cell_origin"]="server";
 		header["msg_type"]="execute_request";
 		header["output_cell_ids"]=output_cell_ids;
-		req["auth_token"]=authentication_token;
+		req["auth_token"]=auth_token();
 		req["header"]=header;
 		content["remove_variable_assignments"]=no_assign;
 		content["code"]=dc.textbuf;
 		req["content"]=content;
 
 		gui->on_kernel_runstatus(true);
-		std::ostringstream str;
-		str << req << std::endl;
-		if(getenv("CADABRA_SHOW_SENT")) {
-			std::cerr << "SENT: " << req.dump(3) << std::endl;
-			}
-		wsclient.send(str.str());
+		send_request(req);
 		// NOTE: we can get a return message in on_message at any point after this,
 		// it will come in on a different thread!
 		}
@@ -652,22 +733,18 @@ void ComputeThread::update_variable_on_server(std::string variable, double value
 	header["cell_id"]=0;
 	header["cell_origin"]="client";
 	header["msg_type"]="execute_request";
-	req["auth_token"]=authentication_token;
+	req["auth_token"]=auth_token();
 	req["header"]=header;
 	content["code"]=variable + "=" + std::to_string(value);
 	req["content"]=content;
 	
-	std::ostringstream str;
-	str << req << std::endl;
-	if(getenv("CADABRA_SHOW_SENT")) {
-		std::cerr << "SENT: " << req.dump(3) << std::endl;
-		}
-	wsclient.send(str.str());
+	send_request(req);
 	}
 
 
 int ComputeThread::number_of_cells_executing() const
 	{
+	std::lock_guard<std::mutex> lock(state_mutex);
 	return running_cells.size();
 	}
 
@@ -681,18 +758,10 @@ void ComputeThread::stop()
 	nlohmann::json req, header, content;
 	header["uuid"]="none";
 	header["msg_type"]="execute_interrupt";
-	req["auth_token"]=authentication_token;
+	req["auth_token"]=auth_token();
 	req["header"]=header;
 
-	std::ostringstream str;
-	str << req << std::endl;
-
-	//	std::cerr << str.str() << std::endl;
-
-	if(getenv("CADABRA_SHOW_SENT")) {
-		std::cerr << "SENT: " << req.dump(3) << std::endl;
-		}
-	wsclient.send(str.str());
+	send_request(req);
 	// Do not yet mark cells non-running, otherwise we are unable to
 	// process any error messages. Do this once the stop comes through.
 	// all_cells_nonrunning();	
@@ -715,18 +784,10 @@ void ComputeThread::restart_kernel()
 	header["uuid"]="none";
 	header["msg_type"]="exit";
 	header["from_server"] = true;
-	req["auth_token"]=authentication_token;
+	req["auth_token"]=auth_token();
 	req["header"]=header;
 
-	std::ostringstream str;
-	str << req << std::endl;
-
-	//	std::cerr << str.str() << std::endl;
-
-	if(getenv("CADABRA_SHOW_SENT")) {
-		std::cerr << "SENT: " << req.dump(3) << std::endl;
-		}
-	wsclient.send(str.str());
+	send_request(req);
 	docthread->on_interactive_output(req);
 	}
 
@@ -745,7 +806,7 @@ bool ComputeThread::complete(DTree::iterator it, int pos, int alternative)
 	else
 		header["cell_origin"]="server";
 	header["msg_type"]="complete";
-	req["auth_token"]=authentication_token;
+	req["auth_token"]=auth_token();
 	req["header"]=header;
 	std::string todo = it->textbuf.substr(0,pos);
 //	if(todo.size()>0 && todo[todo.size()-1]=='\n')
@@ -763,15 +824,7 @@ bool ComputeThread::complete(DTree::iterator it, int pos, int alternative)
 	req["position"]=pos;
 	req["alternative"]=alternative;
 
-	std::ostringstream str;
-	str << req << std::endl;
-
-	// std::cerr << str.str() << std::endl;
-
-	if(getenv("CADABRA_SHOW_SENT")) {
-		std::cerr << "SENT: " << req.dump(3) << std::endl;
-		}
-	wsclient.send(str.str());
+	send_request(req);
 
 	return true;
 	}

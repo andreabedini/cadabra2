@@ -318,7 +318,11 @@ std::string Console::grab_input(uint64_t& id)
 
 void Console::signal_message(const nlohmann::json& message)
 {
-	message_queue.push(message);
+	// Called on the compute thread as well as the GUI thread.
+	{
+		std::lock_guard<std::mutex> lock(message_queue_mutex);
+		message_queue.push(message);
+	}
 	dispatch_message();
 }
 
@@ -435,8 +439,16 @@ void Console::process_message_queue()
 		needs_focus = true;
 	set_sensitive(false);
 
-	while (!message_queue.empty()) {
-		const json& msg = message_queue.front();
+	// Take the pending messages in one go; more can be added from the
+	// compute thread while we process these.
+	std::queue<json> pending;
+	{
+		std::lock_guard<std::mutex> lock(message_queue_mutex);
+		pending.swap(message_queue);
+	}
+
+	while (!pending.empty()) {
+		const json& msg = pending.front();
 		json header = msg.value("header", json(json::value_t::object));
 		json content = msg.value("content", json(json::value_t::object));
 
@@ -503,7 +515,7 @@ void Console::process_message_queue()
 			insert_text(cell_id, "cadabra-client (console): do not know how to handle message:\n" + msg.dump(2), error_tag);
 		}
 
-		message_queue.pop();
+		pending.pop();
 	}
 
 	set_sensitive(true);

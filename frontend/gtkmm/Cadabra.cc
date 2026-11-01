@@ -2,6 +2,9 @@
 #include "Cadabra.hh"
 #include "GtkCompat.hh"
 #include <signal.h>
+#ifndef _WIN32
+#include <glib-unix.h>
+#endif
 #include <fstream>
 #include <gtkmm/messagedialog.h>
 #include <gtkmm/entry.h>
@@ -15,16 +18,34 @@
 
 // Signal handler for ctrl-C
 
-cadabra::NotebookWindow *signal_window;
+cadabra::NotebookWindow *signal_window = nullptr;
 
-void signal_handler(int)
+static void close_signal_window()
 	{
 #if GTKMM_MAJOR_VERSION>3 || (GTKMM_MAJOR_VERSION==3 && GTKMM_MINOR_VERSION>=10)
-	signal_window->close();
+	if(signal_window)
+		signal_window->close();
 #else
 	Gtk::Main::quit();
 #endif
 	}
+
+#ifdef _WIN32
+// Windows runs console control handlers on a separate thread; there is no
+// glib equivalent of g_unix_signal_add, so keep the plain handler.
+void signal_handler(int)
+	{
+	close_signal_window();
+	}
+#else
+// GTK must not be called from a signal handler (it is not async-signal-safe),
+// so let glib turn SIGINT into an event on the main loop instead.
+static gboolean on_sigint(gpointer)
+	{
+	close_signal_window();
+	return G_SOURCE_CONTINUE;
+	}
+#endif
 
 Glib::RefPtr<Cadabra> Cadabra::create()
 	{
@@ -40,7 +61,8 @@ Cadabra::Cadabra()
 	                   cdb::APP_HANDLES_OPEN |
 							 cdb::APP_HANDLES_COMMAND_LINE |
 	                   cdb::APP_NON_UNIQUE),
-	  compute(0), compute_thread(0),
+	  compute(nullptr), compute_thread(nullptr),
+	  script(nullptr), script_thread(nullptr),
 	  server_port(0), server_ip_address("127.0.0.1"),
 	  no_registration(false)
 	{
@@ -173,19 +195,25 @@ void Cadabra::on_activate()
 	Gtk::Application::on_activate();
 	
 	compute = new cadabra::ComputeThread(server_port, server_token, server_ip_address);
-	compute_thread = new std::thread(&cadabra::ComputeThread::run, compute);
 
 	auto nw = new cadabra::NotebookWindow(this, false, window_geometry, window_title);
 	compute->set_master(nw, nw);
 	nw->main_thread_id = std::this_thread::get_id();
 
-	// Connect the two threads.
+	// Connect the two threads. Only start the compute thread once it knows
+	// about the window: its handlers call into the GUI as soon as the
+	// server connection is up.
 	nw->set_compute_thread(compute);
+	compute_thread = new std::thread(&cadabra::ComputeThread::run, compute);
 
 	// Setup ctrl-C handler so we can shut down gracefully (i.e. ask
 	// for confirmation, shut down server).
 	signal_window = nw;
+#ifdef _WIN32
 	signal(SIGINT, signal_handler);
+#else
+	g_unix_signal_add(SIGINT, on_sigint, nullptr);
+#endif
 
 	add_window(*nw);
 	nw->set_visible(true);   // show() is deprecated in GTK4

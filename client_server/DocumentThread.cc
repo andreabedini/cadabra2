@@ -84,6 +84,10 @@ void DocumentThread::load_from_string(const std::string& json)
 	{
 	std::lock_guard<std::mutex> guard(stack_mutex);
 	pending_actions=std::queue<std::shared_ptr<ActionBase> >();
+	// Undo/redo actions hold iterators into the old document, which is
+	// about to be freed.
+	undo_stack=ActionStack();
+	redo_stack=ActionStack();
 	doc.clear();
 	JSON_deserialise(json, doc);
 	gui->remove_all_cells();
@@ -92,10 +96,9 @@ void DocumentThread::load_from_string(const std::string& json)
 
 void DocumentThread::undo()
 	{
-	stack_mutex.lock();
+	std::lock_guard<std::mutex> guard(stack_mutex);
 	if(undo_stack.size()==0) {
 		//std::cerr << "no entries left on the stack" << std::endl;
-		stack_mutex.unlock();
 		return;
 		}
 
@@ -106,18 +109,21 @@ void DocumentThread::undo()
 	redo_stack.push(ua);
 	undo_stack.pop();
 	// std::cerr << "DocumentThread::undo: undo_stack.size() == " << undo_stack.size() << std::endl;
-	ua->revert(*this, *gui);
+	try {
+		ua->revert(*this, *gui);
+		}
+	catch(...) {
+		disable_stacks=false;
+		throw;
+		}
 	disable_stacks=false;
-
-	stack_mutex.unlock();
 	}
 
 void DocumentThread::redo()
 	{
-	stack_mutex.lock();
+	std::lock_guard<std::mutex> guard(stack_mutex);
 	if(redo_stack.size()==0) {
 		//std::cerr << "no entries left on the stack" << std::endl;
-		stack_mutex.unlock();
 		return;
 		}
 
@@ -127,10 +133,14 @@ void DocumentThread::redo()
 
 	undo_stack.push(ua);
 	redo_stack.pop();
-	ua->execute(*this, *gui);
+	try {
+		ua->execute(*this, *gui);
+		}
+	catch(...) {
+		disable_stacks=false;
+		throw;
+		}
 	disable_stacks=false;
-
-	stack_mutex.unlock();
 	}
 
 void DocumentThread::build_visual_representation()
@@ -297,13 +307,13 @@ void DocumentThread::process_action_queue()
 		std::cerr << "INTERNAL ERROR: DocumentThread::process_action_queue not running on main thread."
 					 << std::endl;
 
-	stack_mutex.lock();
+	std::unique_lock<std::mutex> lock(stack_mutex);
 	while(pending_actions.size()>0) {
 		// std::cerr << "pending_actions.size() == " << pending_actions.size() << std::endl;
 		std::shared_ptr<ActionBase> ab = pending_actions.front();
 		// Unlock the action queue while we are processing this particular action,
 		// so that other actions can be added which we run.
-		stack_mutex.unlock();
+		lock.unlock();
 		// std::cerr << "Executing action " << typeid(*ab).name() << " for " << ab->ref_id.id << std::endl;
 		// Execute the action; this will run synchronously, so after
 		// this returns the doc and visual representation have both been
@@ -316,7 +326,7 @@ void DocumentThread::process_action_queue()
 		}
 		// Lock the queue to remove the action just executed, and
 		// add it to the undo stack.
-		stack_mutex.lock();
+		lock.lock();
 		if(ab->undoable())
 			undo_stack.push(ab);
 		if(ab->callback != nullptr)
@@ -324,7 +334,6 @@ void DocumentThread::process_action_queue()
 		if(pending_actions.size()>0) // some actions clear the queue
 			pending_actions.pop();
 		}
-	stack_mutex.unlock();
 	}
 
 bool DocumentThread::on_unhandled_error(const std::exception& err)

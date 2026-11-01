@@ -1,5 +1,6 @@
 #pragma once
 
+#include <mutex>
 #include <queue>
 #include <list>
 #include <gtkmm.h>
@@ -123,6 +124,7 @@ namespace cadabra {
 			bool needs_focus; // True if console should grab focus on output
 			Glib::RefPtr<Gtk::TextBuffer> buffer; // Reference to tv.get_buffer()
 			std::string collect; // Collected input if prompt is in continuation mode
+			std::mutex                 message_queue_mutex; // guards message_queue
 			std::queue<nlohmann::json> message_queue; // Current messages needing processing
 			std::queue<std::pair<std::string, Glib::RefPtr<Gtk::TextMark>>> run_queue; // Cells waiting to be run, .first is input string and .second is the input cell
 			TeXEngine tex_engine; // Engine for compiling TeX outputs

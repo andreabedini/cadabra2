@@ -4,13 +4,29 @@
 #include <boost/beast/websocket.hpp>
 #include <boost/beast/ssl.hpp>
 #include <boost/asio/connect.hpp>
+#include <boost/asio/post.hpp>
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/ssl/stream.hpp>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
 #include <queue>
 #include <regex>
+
+/// Asynchronous websocket client on top of Boost.Beast.
+///
+/// Threading: `run()` executes all I/O and all handlers on the thread
+/// that calls it (the "io thread"). `send()`, `close()` and `stop()`
+/// may be called from any thread; `send()` and `close()` post their
+/// work to the io thread. `connect()` and the `set_*_handler()` calls
+/// must be made either before `run()` starts or from within a handler
+/// (i.e. on the io thread).
+///
+/// Each `connect()` starts a new connection attempt and discards any
+/// state of the previous one, including unsent messages. The fail
+/// handler is called at most once per connection attempt; handlers of
+/// operations belonging to an earlier connection are ignored.
 
 class websocket_client {
 	public:
@@ -53,6 +69,7 @@ class websocket_client {
 		void do_read();
 		void do_write();
 		void fail(const boost::beast::error_code& ec);
+		void reset_connection_state();
 
 		// State
 		boost::asio::io_context        ioc_;
@@ -60,7 +77,10 @@ class websocket_client {
 		boost::asio::ip::tcp::resolver resolver_;
 		std::unique_ptr<boost::beast::websocket::stream<boost::beast::ssl_stream<boost::asio::ip::tcp::socket>>> wss_stream_;
 		std::unique_ptr<boost::beast::websocket::stream<boost::asio::ip::tcp::socket>> ws_stream_;
-		boost::beast::flat_buffer buffer_;
+		// Read buffer; a fresh one for every connection, kept alive by
+		// the pending read so an aborted read of an old connection never
+		// touches the buffer of the current one.
+		std::shared_ptr<boost::beast::flat_buffer> buffer_;
 		bool is_ssl_;
 		std::string host_, port_, path_;
 
@@ -75,9 +95,12 @@ class websocket_client {
 				std::string data;
 				std::shared_ptr<boost::beast::flat_buffer> buffer;
 		};
+		// All of the following are only accessed on the io thread.
 		std::queue<queued_message> message_queue_;
-
-		bool writing_{false};
+		bool writing_{false};    // an async_write is in flight
+		bool connected_{false};  // handshake done, writes may start
+		bool failed_{false};     // fail handler already called for this connection
+		std::uint64_t generation_{0}; // incremented by every connect()
 };
 
 

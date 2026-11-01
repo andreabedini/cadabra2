@@ -110,10 +110,14 @@ void websocket_server::connection::on_read_websocket(boost::beast::error_code ec
 		}
 	
 	if (server_.message_handler_) {
+		// Use the non-throwing overload: if the peer has already reset
+		// the connection, an exception here would escape ioc_.run().
+		boost::beast::error_code rec;
+		auto endpoint = socket_.remote_endpoint(rec);
 		server_.message_handler_(id_,
 										 boost::beast::buffers_to_string(buffer_.data()),
 										 http_request_,
-										 socket_.remote_endpoint().address().to_string());
+										 rec ? std::string() : endpoint.address().to_string());
 		}
 	
 	buffer_.consume(buffer_.size());
@@ -122,45 +126,33 @@ void websocket_server::connection::on_read_websocket(boost::beast::error_code ec
 
 void websocket_server::connection::send(const std::string& message)
 	{
-	static int msg_number=0;
-	
-	if (!is_websocket_) return;
-   
-	// std::cerr << "SEND CALLED on thread " << pthread_self() << std::endl;
-
+	// May be called from any thread; the queue and the stream are only
+	// touched on the io thread.
 	queued_message msg;
 	msg.data   = message;
 	msg.buffer = std::make_shared<boost::beast::flat_buffer>();
-	msg.seq    = ++msg_number;
 	boost::beast::ostream(*msg.buffer) << msg.data;
 
-	std::unique_lock<std::mutex> lock(queue_mutex_);
-	message_queue_.push(msg);
-
-	// std::cerr << "QUEUE size after push " << message_queue_.size() << std::endl;
-	if(!writing_) {
-		lock.unlock();
-		do_write();
-		}
+	boost::asio::post(socket_.get_executor(),
+							[self = shared_from_this(), msg = std::move(msg)]() mutable {
+							if (!self->is_websocket_) return;
+							self->message_queue_.push(std::move(msg));
+							if (!self->writing_)
+								self->do_write();
+							});
 	}
 
 void websocket_server::connection::do_write()
 	{
-	std::unique_lock<std::mutex> lock(queue_mutex_);
 	if(message_queue_.empty() || !is_websocket_) {
 		writing_ = false;
-		lock.unlock();
 		return;
 		}
-	
 	writing_ = true;
-	queued_message msg = message_queue_.front();
-	lock.unlock();
-	
-	// std::cerr << "going to send msg " << msg.seq << std::endl;
+
 	ws_stream_->async_write(
-		msg.buffer->data(),
-		[self = shared_from_this()](
+		message_queue_.front().buffer->data(),
+		[self = shared_from_this(), buf = message_queue_.front().buffer](
 			boost::beast::error_code ec, std::size_t bytes_transferred) {
 		self->on_write(ec, bytes_transferred);
 		});
@@ -168,32 +160,30 @@ void websocket_server::connection::do_write()
 
 void websocket_server::connection::close()
 	{
-	if (!is_websocket_) {
-		socket_.shutdown(boost::asio::ip::tcp::socket::shutdown_both);
-		server_.remove_connection(id_);
-		return;
-		}
-	
-	ws_stream_->async_close(
-		boost::beast::websocket::close_code::normal,
-		[self = shared_from_this()](boost::beast::error_code ec) {
-		self->on_close(ec);
+	// May be called from any thread.
+	boost::asio::post(socket_.get_executor(), [self = shared_from_this()]() {
+		if (!self->is_websocket_) {
+			boost::beast::error_code ec;
+			self->socket_.shutdown(boost::asio::ip::tcp::socket::shutdown_both, ec);
+			self->server_.remove_connection(self->id_);
+			return;
+			}
+		self->ws_stream_->async_close(
+			boost::beast::websocket::close_code::normal,
+			[self](boost::beast::error_code ec) {
+			self->on_close(ec);
+			});
 		});
 	}
 
 void websocket_server::connection::on_write(boost::beast::error_code ec, std::size_t)
 	{
-	//std::cerr << "sent msg " << message_queue_.front().seq
-//				 << "; queue size on_write " << message_queue_.size() << std::endl;
-	std::unique_lock<std::mutex> lock(queue_mutex_);
-	message_queue_.pop();
-	lock.unlock();
-	
 	if(ec) {
+		writing_ = false;
 		server_.remove_connection(id_);
 		return;
 		}
-	
+	message_queue_.pop();
 	do_write();
 	}
 
@@ -261,7 +251,10 @@ void websocket_server::do_accept()
 			auto conn = std::make_shared<connection>(ioc_, *this, id);
 			socket.set_option(boost::asio::ip::tcp::no_delay(true));
 			conn->socket_ = std::move(socket);
-			connections_[id] = conn;
+				{
+				std::lock_guard<std::mutex> lock(connections_mutex_);
+				connections_[id] = conn;
+				}
 			conn->start();
 			}
 		else {
@@ -273,26 +266,39 @@ void websocket_server::do_accept()
 		});
 	}
 
+std::shared_ptr<websocket_server::connection> websocket_server::find_connection(id_type id)
+	{
+	std::lock_guard<std::mutex> lock(connections_mutex_);
+	auto it = connections_.find(id);
+	if(it==connections_.end()) return nullptr;
+	return it->second;
+	}
+
 void websocket_server::send(id_type id, const std::string& message)
 	{
-	if (auto it = connections_.find(id); it != connections_.end()) {
-		it->second->send(message);
-		}
+	if (auto conn = find_connection(id))
+		conn->send(message);
 	}
 
 void websocket_server::close(id_type id)
 	{
-	if (auto it = connections_.find(id); it != connections_.end()) {
-		it->second->close();
-		}
+	if (auto conn = find_connection(id))
+		conn->close();
 	}
 
 void websocket_server::remove_connection(id_type id)
 	{
-	if (disconnect_handler_) {
+	// Runs on the io thread. A failing connection can get here more than
+	// once (e.g. from both a failed read and a failed write); only report
+	// the disconnect the first time.
+	size_t erased;
+		{
+		std::lock_guard<std::mutex> lock(connections_mutex_);
+		erased = connections_.erase(id);
+		}
+	if (erased && disconnect_handler_) {
 		disconnect_handler_(id);
 		}
-	connections_.erase(id);
 	}
 
 void websocket_server::run()
@@ -303,19 +309,36 @@ void websocket_server::run()
 	if(++calls>1)
 		throw std::logic_error("Cannot call websocket_server::run multiple times.");
 	
+	running_ = true;
 	ioc_.run();
+	running_ = false;
 	}
 
 void websocket_server::stop()
 	{
-	boost::beast::error_code ec;
-	if(acceptor_)
-		acceptor_->close(ec);
-	
-	for (auto& [_, conn] : connections_) {
-		conn->close();
-		}
-	
-	connections_.clear();
-	ioc_.stop();
+	// The acceptor and the connections may only be touched on the io
+	// thread. If that thread is running (and this is not it), hand the
+	// work over to it; otherwise (not running, or called from the
+	// destructor after run() has returned) do it here.
+	auto teardown = [this]() {
+		boost::beast::error_code ec;
+		if(acceptor_)
+			acceptor_->close(ec);
+		std::unordered_map<id_type, std::shared_ptr<connection>> conns;
+			{
+			std::lock_guard<std::mutex> lock(connections_mutex_);
+			conns.swap(connections_);
+			}
+		for (auto& [_, conn] : conns) {
+			boost::beast::error_code sec;
+			conn->socket_.shutdown(boost::asio::ip::tcp::socket::shutdown_both, sec);
+			conn->socket_.close(sec);
+			}
+		ioc_.stop();
+		};
+
+	if(running_ && !ioc_.get_executor().running_in_this_thread())
+		boost::asio::post(ioc_, teardown);
+	else
+		teardown();
 	}

@@ -4,11 +4,14 @@
 #include <boost/beast/websocket.hpp>
 #include <boost/beast/http.hpp>
 #include <boost/asio/ip/tcp.hpp>
+#include <boost/asio/post.hpp>
 #include <functional>
 #include <memory>
 #include <string>
 #include <queue>
 #include <optional>
+#include <atomic>
+#include <mutex>
 #include <unordered_map>
 #include <iostream>
 #include <pthread.h>
@@ -40,14 +43,14 @@ class websocket_server {
 		void set_http_handler(http_handler h);
 
 		// You should call `run` on a separate thread to start the
-		// listening process.  All callbacks on the message handlers will
-		// come on this thread. It is safe to call `send` below from a
-		// different thread.
+		// listening process. All I/O, and all callbacks on the handlers,
+		// happen on this thread (the "io thread").
 		void run();
 		void stop();
 
-		// Send a message. This is safe on a thread which is not the
-		// thread which called `run`.
+		// Send a message, or close a connection. Safe to call from any
+		// thread: the work is posted to the io thread. Unknown or
+		// already closed ids are ignored.
 		void send(id_type id, const std::string& message);
 		void close(id_type id);
 
@@ -85,22 +88,14 @@ class websocket_server {
 				websocket_server&              server_;
 
 				id_type id_;
-				class queued_message {
-					public:
-						queued_message() {
-						// std::cerr << "Thread " << pthread_self() << " queued_message constructor " << (void*)this << std::endl;
-						}
-						~queued_message() {
-						// std::cerr << "Thread " << pthread_self() << " queued_message destructor " << (void*)this << std::endl;
-						}
-						
+				struct queued_message {
 						std::string data;
 						std::shared_ptr<boost::beast::flat_buffer> buffer;
-						int seq;
 				};
-				bool is_websocket_{false};
 
-				std::mutex queue_mutex_; // lock this for access to the variables below
+				// Everything below is only accessed on the io thread;
+				// `send` and `close` post their work there.
+				bool is_websocket_{false};
 				std::queue<queued_message> message_queue_;
 				bool writing_{false};
 		};
@@ -110,8 +105,13 @@ class websocket_server {
 
 		boost::asio::io_context                                  ioc_;
 		std::optional<boost::asio::ip::tcp::acceptor>            acceptor_;
+		// Read from other threads by send/close/stop, so guarded.
+		std::mutex                                               connections_mutex_;
 		std::unordered_map<id_type, std::shared_ptr<connection>> connections_;
 		id_type                                                  next_connection_id_{0};
+		std::atomic<bool>                                        running_{false};
+
+		std::shared_ptr<connection> find_connection(id_type id);
 
 		message_handler    message_handler_;
 		connect_handler    connect_handler_;

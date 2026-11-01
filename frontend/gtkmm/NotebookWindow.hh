@@ -71,6 +71,9 @@ namespace cadabra {
 			virtual void on_kernel_runstatus(bool) override;
 			virtual void process_data() override;
 
+			// GUI-thread half of on_connect(), run from process_todo_queue.
+			void on_kernel_connected();
+
 			// TeX stuff
 			TeXEngine        engine;
 			double           scale; // total scale factor (hdpi and textscale)
@@ -213,6 +216,12 @@ namespace cadabra {
 			std::string                    status_string, kernel_string, progress_string;
 			double                         progress_frac;
 			int                            status_line, status_col;
+
+			// Work requested by the compute thread which has to be done on
+			// the GUI thread; set under status_mutex and picked up in
+			// process_todo_queue.
+			bool                           kernel_connect_pending=false;
+			bool                           follow_scroll_pending=false;
 
 			// Functions which get called on the compute thread can signal to
 			// the GUI thread that elements need to be updated, by sending

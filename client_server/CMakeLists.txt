@@ -188,6 +188,17 @@ if(WIN32)
   target_link_libraries(cadabra_client ws2_32 bcrypt)
 endif()
 
+# Threading/reconnection test for the websocket client and server.
+if(BUILD_TESTS)
+  add_executable(test_websocket test_websocket.cc websocket_client.cc websocket_server.cc)
+  target_link_libraries(test_websocket ${Boost_LIBRARIES} ${OPENSSL_LIBRARIES} Threads::Threads)
+  if(WIN32)
+    target_link_libraries(test_websocket ws2_32 mswsock bcrypt)
+  endif()
+  add_test(NAME websocket COMMAND test_websocket)
+  set_tests_properties(websocket PROPERTIES TIMEOUT 120)
+endif()
+
 # cadabra2html
 add_executable(cadabra2html 
   cadabra2html.cc 
