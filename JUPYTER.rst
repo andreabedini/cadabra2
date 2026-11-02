@@ -41,9 +41,29 @@ Building the Cadabra Jupyter kernel
 The Cadabra build scripts can now build a Jupyter kernel, so that you
 can use the Jupyter notebook to write Cadabra code (using all of the
 Cadabra notation, i.e. without having to resort to the much more ugly
-Python interface). At the moment this is only supported by compiling
-against a Conda python, simply because that enables us to build on the
-'xeus' library more easily.
+Python interface). There are two kernels: the default one, written in
+Python on top of ipykernel (see above, and the README), and a native
+one written in C++ on top of the 'xeus' library, described here.
+
+Building the native kernel with system packages
+-----------------------------------------------
+
+The native kernel needs xeus 3 and xeus-zmq 1. On Debian or Ubuntu
+(24.04 or later) these are packaged::
+
+    sudo apt install xeus-dev xeus-zmq-dev
+
+Then configure Cadabra with ``-DENABLE_JUPYTER=ON`` and build as usual.
+This produces the ``cadabra-jupyter-kernel`` binary, and ``make install``
+installs it together with a kernel spec (``share/jupyter/kernels/cadabra``),
+which shows up in Jupyter as "Cadabra2 (native)". Note that
+``ENABLE_JUPYTER`` also makes Cadabra's LaTeX output omit the
+``\discretionary`` line-breaking hints (which MathJax does not
+understand), for the whole build.
+
+If ``jupyter_client`` is installed, ``ctest -R jupyter_kernel`` runs the
+kernel through a Jupyter client (execution, display output, errors,
+completion and interrupts).
 
 Building a Conda package
 ------------------------

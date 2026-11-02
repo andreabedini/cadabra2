@@ -115,6 +115,20 @@ set(RTESTS
 if(MATHEMATICA_FOUND)
   set(RTESTS ${RTESTS} mma)
 endif()
+# The native Jupyter kernel, driven through jupyter_client (if available).
+if(ENABLE_JUPYTER)
+  execute_process(COMMAND ${Python_EXECUTABLE} -c "import jupyter_client"
+                  RESULT_VARIABLE NO_JUPYTER_CLIENT OUTPUT_QUIET ERROR_QUIET)
+  if(NO_JUPYTER_CLIENT)
+    message(STATUS "jupyter_client not found, not testing the native Jupyter kernel")
+  else()
+    add_test(NAME jupyter_kernel
+             COMMAND ${Python_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/jupyter_kernel.py
+                     $<TARGET_FILE:cadabra-jupyter-kernel> "${PYTHONPATH}")
+    set_tests_properties(jupyter_kernel PROPERTIES TIMEOUT 300)
+  endif()
+endif()
+
 foreach(RTEST ${RTESTS})
   add_test(${RTEST} ${CMAKE_BINARY_DIR}/core/cadabra2-cli ${CMAKE_SOURCE_DIR}/tests/${RTEST}.cdb)
   # We need to set the Python path so that we pick up the correct cadabra2.so Python module

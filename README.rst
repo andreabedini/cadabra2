@@ -433,12 +433,11 @@ platforms out-of-the-box; you do not need to do anything else. The
 Jupyter kernel allows you to use Cadabra notation inside a Jupyter
 notebook session.
 
-The distribution also still contains code for the 'old' Jupyter
-kernel, which is written in C++ on top of `xeus`. Building this kernel
-is more complicated mainly because of this dependency, and there is
-not much of an advantage over the Python kernel; it's mainly left in
-the tree for future reference, For full instructions on how to build
-the old `xeus`-based kernel, see
+The distribution also contains a native Jupyter kernel, written in
+C++ on top of `xeus` (version 3, with xeus-zmq 1). It is built with
+`-DENABLE_JUPYTER=ON`; on recent Debian and Ubuntu the dependencies
+are available as the `xeus-dev` and `xeus-zmq-dev` packages. For full
+instructions see
 https://github.com/kpeeters/cadabra2/blob/master/JUPYTER.rst.
 
 

@@ -84,16 +84,21 @@ set(CADABRA_CLIENT_SRC
   ${CADABRA_LIBS_DIR}/whereami/whereami.c
 )
  
+# The native (xeus-based) Jupyter kernel: the Python side of the server
+# (Server.cc and what it needs), with a Jupyter front instead of the
+# websocket one.
 set(JUPYTER_KERNEL_SRC
   cadabra-jupyter-kernel.cc
   cadabra-jupyter-kernel.hh
   cadabra-jupyter-main.cc
   Server.cc
+  websocket_server.cc
   ${CADABRA_CORE_DIR}/InstallPrefix.cc
   ${CADABRA_CORE_DIR}/DataCell.cc
   ${CADABRA_CORE_DIR}/Exceptions.cc 
   ${CADABRA_CORE_DIR}/CdbPython.cc 
   ${CADABRA_CORE_DIR}/Stopwatch.cc 
+  ${CADABRA_CORE_DIR}/pythoncdb/py_helpers.cc
   ${CADABRA_LIBS_DIR}/whereami/whereami.c
   ${CADABRA_LIBS_DIR}/base64/base64.cc
 )
@@ -174,6 +179,28 @@ if(WIN32)
     endif()
  endif()
 
+# Native Jupyter kernel (xeus 3 / xeus-zmq 1)
+if(ENABLE_JUPYTER)
+  find_package(xeus 3 REQUIRED)
+  find_package(xeus-zmq 1 REQUIRED)
+  add_executable(cadabra-jupyter-kernel ${JUPYTER_KERNEL_SRC})
+  target_link_libraries(cadabra-jupyter-kernel
+    xeus
+    xeus-zmq
+    pybind11::embed
+    ${Boost_LIBRARIES}
+    ${Python_LIBRARIES}
+    ${GLIBMM_LIBRARIES}
+    ${OPENSSL_LIBRARIES}
+    Threads::Threads
+    )
+  if(WIN32)
+    target_link_libraries(cadabra-jupyter-kernel ws2_32 mswsock bcrypt)
+  elseif(UNIX AND NOT ${CMAKE_SYSTEM_NAME} MATCHES ".*BSD|DragonFly")
+    target_link_libraries(cadabra-jupyter-kernel dl util)
+  endif()
+endif()
+
 # Client library
 add_library(cadabra_client STATIC ${CADABRA_CLIENT_SRC})
 target_link_libraries(cadabra_client
@@ -241,7 +268,7 @@ install(TARGETS cadabra2html cadabra2latex DESTINATION ${CDB_BIN_PATH})
 
 if(ENABLE_JUPYTER)
   install(TARGETS cadabra-jupyter-kernel      DESTINATION ${CDB_BIN_PATH})
-  install(FILES   kernel.json connection.json DESTINATION share/jupyter/kernels/cadabra)
+  install(FILES   kernel.json                 DESTINATION share/jupyter/kernels/cadabra)
 endif()
 
 if (MSVC AND NOT INSTALL_TARGETS_ONLY)

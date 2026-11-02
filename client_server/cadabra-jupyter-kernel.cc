@@ -1,164 +1,248 @@
-
 #include "Config.hh"
 #include <iostream>
+#include <vector>
 #include "cadabra-jupyter-kernel.hh"
-#include "xeus/xguid.hpp"
+#include "CdbPython.hh"
+#include "xeus/xhelper.hpp"
 #include <boost/algorithm/string.hpp>
 
-// #define DEBUG 1
+using namespace cadabra;
 
-cadabra::CadabraJupyter::CadabraJupyter()
-	: Server()
-	{
-	runner = std::thread(std::bind(&Server::wait_for_job, this));
-	pybind11::gil_scoped_release release;
-	}
+namespace {
 
-void cadabra::CadabraJupyter::configure_impl()
-	{
-	auto handle_comm_opened = [](xeus::xcomm&& comm, const xeus::xmessage&) {
-		std::cerr << "Comm opened for target: " << comm.target().name() << std::endl;
-		};
-	comm_manager().register_comm_target("echo_target", handle_comm_opened);
-//	using function_type = std::function<void(xeus::xcomm&&, const xeus::xmessage&)>;
-#ifdef DEBUG
-	std::cerr << "CadabraJupyter configured" << std::endl;
-#endif
-	}
+	// Jupyter positions count unicode code points; our strings are UTF-8.
 
-xjson cadabra::CadabraJupyter::execute_request_impl(int execution_counter,
-      const std::string& code,
-      bool silent,
-      bool store_history,
-      xjson /* user_expressions */,
-      bool allow_stdin)
-	{
-#ifdef DEBUG
-	std::cerr << "Received execute_request" << std::endl;
-	std::cerr << "execution_counter: " << execution_counter << std::endl;
-	std::cerr << "code: " << code << std::endl;
-	std::cerr << "silent: " << silent << std::endl;
-	std::cerr << "store_history: " << store_history << std::endl;
-	std::cerr << "allow_stdin: " << allow_stdin << std::endl;
-	std::cerr << std::endl;
-#endif
-
-	std::unique_lock<std::mutex> lock(block_available_mutex);
-	websocketpp::connection_hdl hdl;
-	block_queue.push(Block(hdl, code, execution_counter));
-	block_available.notify_one();
-
-	// The 'wait_for_job' function which runs in a separate thread will take
-	// care of executing the 'code'. If anything in 'code' uses 'display',
-	// it will run the 'send' function below. At the end of the code
-	// execution, a final output block will be sent by 'Server::on_block_finished'.
-
-	xjson result;
-	result["status"] = "ok";
-	return result;
-	}
-
-void cadabra::CadabraJupyter::on_block_error(Block blk)
-	{
-#ifdef DEBUG
-	std::cerr << "error: " << blk.error << std::endl;
-#endif
-	std::vector<std::string> traceback;
-	// FIXME: This does not show the error, for some reason...
-	publish_execution_error("Exception", blk.error, traceback);
-	xjson pub_data;
-	pub_data["text/markdown"] = blk.error;
-//	xjson extra_data;
-//	extra_data["dummy"] = "dummy";
-	// FIXME: ... so we send it again as a message.
-	publish_execution_result(current_id, std::move(pub_data), 0); // std::move(extra_data));
-	}
-
-uint64_t cadabra::CadabraJupyter::send(const std::string& output, const std::string& msg_type, uint64_t parent_id, bool last)
-	{
-#ifdef DEBUG
-	std::cerr << "received: " << msg_type << " " << output << std::endl;
-#endif
-	if(output.size()>0) {
-		if(msg_type=="verbatim" || msg_type=="output") {
-			xjson pub_data;
-			pub_data["text/markdown"] = output;
-//			xjson extra_data;
-//			extra_data["dummy"] = "dummy";
-			publish_execution_result(current_id, std::move(pub_data), 0); // std::move(extra_data));
+	size_t codepoints_to_bytes(const std::string& s, size_t cp)
+		{
+		size_t i=0;
+		while(i<s.size() && cp>0) {
+			++i;
+			while(i<s.size() && (static_cast<unsigned char>(s[i]) & 0xC0)==0x80)
+				++i;
+			--cp;
 			}
-		else if(msg_type=="latex_view") {
-			xjson pub_data;
-			std::string tmp=output;
-			boost::replace_all(tmp, "\\begin{dmath*}", "$");
-			boost::replace_all(tmp, "\\end{dmath*}", "$");
-			pub_data["text/markdown"] = tmp;
-//			xjson extra_data;
-//			extra_data["dummy"] = "dummy";
-			publish_execution_result(current_id, std::move(pub_data), 0); // std::move(extra_data));
+		return i;
+		}
+
+	size_t bytes_to_codepoints(const std::string& s, size_t bytes)
+		{
+		size_t cp=0;
+		for(size_t i=0; i<bytes && i<s.size(); ++i)
+			if((static_cast<unsigned char>(s[i]) & 0xC0)!=0x80)
+				++cp;
+		return cp;
+		}
+
+	// Split an error message as produced by Server::run_string, e.g.
+	// "NameError: name 'x' is not defined\n...", into name, value and
+	// traceback lines.
+	void split_error(const std::string& msg, std::string& ename, std::string& evalue,
+						  std::vector<std::string>& traceback)
+		{
+		boost::split(traceback, msg, boost::is_any_of("\n"));
+		const std::string first = traceback.empty() ? std::string() : traceback[0];
+		if(first.rfind("Interrupted", 0)==0) {
+			ename  = "KeyboardInterrupt";
+			evalue = first;
+			return;
+			}
+		auto colon = first.find(':');
+		std::string name = first.substr(0, colon);
+		bool is_identifier = colon!=std::string::npos && !name.empty()
+			&& name.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.")==std::string::npos;
+		if(is_identifier) {
+			ename  = name;
+			evalue = boost::trim_copy(first.substr(colon+1));
+			}
+		else {
+			ename  = "Error";
+			evalue = first;
 			}
 		}
+
+	}
+
+CadabraJupyter::CadabraJupyter()
+	: Server()
+	{
+	// The Server constructor has set up Python, including the hooks which
+	// make `display` call our `send`. Everything runs on the thread which
+	// handles the shell requests, so there is no block-running thread.
+	}
+
+void CadabraJupyter::configure_impl()
+	{
+	}
+
+void CadabraJupyter::flush_output()
+	{
+	std::string out = catchOut.str();
+	catchOut.clear();
+	std::string err = catchErr.str();
+	catchErr.clear();
+	if(!publishing) return;
+	if(!out.empty()) publish_stream("stdout", out);
+	if(!err.empty()) publish_stream("stderr", err);
+	}
+
+nl::json CadabraJupyter::execute_request_impl(int execution_counter,
+															 const std::string& code,
+															 bool silent,
+															 bool /* store_history */,
+															 nl::json /* user_expressions */,
+															 bool /* allow_stdin */)
+	{
+	publishing = !silent;
+	current_id = execution_counter;
+
+	try {
+		// Do not let run_string collect stdout/stderr (it would print the
+		// latter to our own stderr); flush_output publishes both.
+		run_string(code, false);
+		flush_output();
+		return xeus::create_successful_reply();
+		}
+	catch(std::exception& ex) {
+		// Server::run_string restores the Python error before rethrowing
+		// (see the comment there), so it is still pending; clear it, or
+		// the next call into Python raises it again.
+		PyErr_Clear();
+		flush_output();
+		std::string ename, evalue;
+		std::vector<std::string> traceback;
+		split_error(ex.what(), ename, evalue, traceback);
+		if(publishing)
+			publish_execution_error(ename, evalue, traceback);
+		// Built by hand: xeus 3.1's create_error_reply swaps ename and evalue.
+		nl::json reply;
+		reply["status"]    = "error";
+		reply["ename"]     = ename;
+		reply["evalue"]    = evalue;
+		reply["traceback"] = traceback;
+		return reply;
+		}
+	}
+
+uint64_t CadabraJupyter::send(const std::string& output, const std::string& msg_type,
+										uint64_t /* parent_id */, uint64_t /* cell_id */, bool /* last */)
+	{
+	// Anything printed before this display call should appear before it.
+	flush_output();
+	if(!publishing || output.empty())
+		return current_id;
+
+	nl::json data;
+	if(msg_type=="latex_view") {
+		// Cadabra wraps display maths in dmath*; Jupyter frontends render
+		// standard $$...$$ through MathJax.
+		std::string tex = output;
+		boost::replace_all(tex, "\\begin{dmath*}", "$$");
+		boost::replace_all(tex, "\\end{dmath*}", "$$");
+		// Line-breaking hints for the LaTeX renderer; MathJax does not know
+		// \discretionary. (A build with ENABLE_JUPYTER does not emit them,
+		// but do not depend on that.)
+		boost::replace_all(tex, "\\discretionary{}{}{}", "");
+		boost::trim(tex);
+		data["text/latex"] = tex;
+		data["text/plain"] = tex;
+		}
+	else if(msg_type=="image_png") {
+		data["image/png"]  = output; // already base64 encoded
+		data["text/plain"] = "<image>";
+		}
+	else if(msg_type=="image_svg") {
+		data["image/svg+xml"] = output; // base64 encoded
+		data["text/plain"]    = "<image>";
+		}
+	else {
+		// verbatim, output, input_form and anything else.
+		data["text/plain"] = output;
+		}
+	display_data(std::move(data), nl::json::object(), nl::json::object());
 	return current_id;
 	}
 
-xjson cadabra::CadabraJupyter::complete_request_impl(const std::string& code,
-      int cursor_pos)
+nl::json CadabraJupyter::complete_request_impl(const std::string& code, int cursor_pos)
 	{
-#ifdef DEBUG
-	std::cerr << "Received complete_request" << std::endl;
-	std::cerr << "code: " << code << std::endl;
-	std::cerr << "cursor_pos: " << cursor_pos << std::endl;
-	std::cerr << std::endl;
-#endif
-	xjson result;
-	result["status"] = "ok";
-	result["matches"] = {"a.echo1"};
-	result["cursor_start"] = 2;
-	result["cursor_end"] = 6;
-	return result;
+	// Complete the token in front of the cursor, using the same Python
+	// completer as the other frontends.
+	static const std::string delimiters="\n(){}[]:\t ,=+-*/";
+	size_t end = codepoints_to_bytes(code, cursor_pos>0 ? cursor_pos : 0);
+	size_t start = end;
+	while(start>0 && delimiters.find(code[start-1])==std::string::npos)
+		--start;
+	std::string token = code.substr(start, end-start);
+
+	nl::json matches = nl::json::array();
+	if(!token.empty()) {
+		try {
+			pybind11::object completer =
+				main_namespace["__cdbkernel__"].attr("completer");
+			for(int i=0; i<500; ++i) {
+				pybind11::object res = completer.attr("complete")(token, i);
+				if(res.is_none()) break;
+				matches.push_back(res.cast<std::string>());
+				}
+			}
+		catch(std::exception&) {
+			// No completions; never let an exception escape to xeus (it
+			// would not send a reply at all).
+			PyErr_Clear();
+			}
+		}
+	return xeus::create_complete_reply(matches,
+												  bytes_to_codepoints(code, start),
+												  bytes_to_codepoints(code, end));
 	}
 
-xjson cadabra::CadabraJupyter::inspect_request_impl(const std::string& code,
-      int cursor_pos,
-      int detail_level)
+nl::json CadabraJupyter::inspect_request_impl(const std::string& /* code */,
+															 int /* cursor_pos */,
+															 int /* detail_level */)
 	{
-#ifdef DEBUG
-	std::cerr << "Received inspect_request" << std::endl;
-	std::cerr << "code: " << code << std::endl;
-	std::cerr << "cursor_pos: " << cursor_pos << std::endl;
-	std::cerr << "detail_level: " << detail_level << std::endl;
-	std::cerr << std::endl;
-#endif
-	xjson result;
-	result["status"] = "ok";
-	result["found"] = false;
-	return result;
+	return xeus::create_inspect_reply(false);
 	}
 
-xjson cadabra::CadabraJupyter::is_complete_request_impl(const std::string& code)
+nl::json CadabraJupyter::is_complete_request_impl(const std::string& code)
 	{
-#ifdef DEBUG
-	std::cerr << "Received is_complete_request" << std::endl;
-	std::cerr << "code: " << code << std::endl;
-	std::cerr << std::endl;
-#endif
-	xjson result;
-	result["status"] = "complete";
-	return result;
+	// Check the Python code which the Cadabra input turns into. Never let
+	// an exception escape to xeus: it would not send a reply at all.
+	try {
+		std::string error;
+		std::string pycode = cdb2python_string(code, true, error);
+		if(!error.empty())
+			return xeus::create_is_complete_reply("invalid");
+		// compile_command wants no trailing newline on the last line.
+		while(!pycode.empty() && pycode.back()=='\n')
+			pycode.pop_back();
+		switch(is_python_code_complete(pycode, error)) {
+			case 1:  return xeus::create_is_complete_reply("complete");
+			case 0:  return xeus::create_is_complete_reply("incomplete", "    ");
+			default: return xeus::create_is_complete_reply("invalid");
+			}
+		}
+	catch(std::exception&) {
+		PyErr_Clear();
+		return xeus::create_is_complete_reply("unknown");
+		}
 	}
 
-xjson cadabra::CadabraJupyter::kernel_info_request_impl()
+nl::json CadabraJupyter::kernel_info_request_impl()
 	{
-	xjson result;
-	result["implementation"] = "Cadabra";
-	result["implementation_version"] = std::string(CADABRA_VERSION_SEM);
-	result["language_info"]["name"] = "cadabra";
-	result["language_info"]["version"] = "2.0.0";
-	result["language_info"]["mimetype"] = "text/cadabra";
-	result["language_info"]["file_extension"] = ".cdb";
-	return result;
+	return xeus::create_info_reply(
+		"5.3",                          // protocol version
+		"cadabra_xeus_kernel",          // implementation
+		std::string(CADABRA_VERSION_SEM),
+		"cadabra2",                     // language name
+		std::string(CADABRA_VERSION_SEM),
+		"text/cadabra2",                // mimetype
+		".cdb",                         // file extension
+		"cadabra",                      // pygments lexer
+		"cadabra",                      // codemirror mode
+		"python",                       // nbconvert exporter
+		"Cadabra " + std::string(CADABRA_VERSION_SEM) + " (native xeus kernel)\n"
+		"More info at https://cadabra.science/");
 	}
 
-void cadabra::CadabraJupyter::shutdown_request_impl() {}
-
-
+void CadabraJupyter::shutdown_request_impl()
+	{
+	}

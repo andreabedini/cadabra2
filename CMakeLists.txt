@@ -202,13 +202,6 @@ endif()
 option(ENABLE_JUPYTER    "Enable building the Xeus-based Jupyter kernel" OFF)
 option(ENABLE_PY_JUPYTER "Enable building the default Jupyter kernel"    ON)
 
-if(ENABLE_JUPYTER)
-  # Currently only possible when building against Conda.
-  set(CONDA_FOUND TRUE)
-else()
-   set(CONDA_FOUND FALSE)
-endif()
-
 option(BUILD_TESTS "Build tests" ON)
 if (BUILD_TESTS)
   message(STATUS "Building tests")
@@ -517,11 +510,8 @@ endif()
 # Jupyter kernel
 print_header("Configuring Jupyter kernel")
 if(ENABLE_JUPYTER)
-  message(STATUS "Building the Xeus-based Jupyter kernel")
-  # Currently only possible when building against Conda.
-  set(CONDA_FOUND TRUE)
+  message(STATUS "Building the Xeus-based Jupyter kernel (needs xeus 3 and xeus-zmq 1)")
 else()
-   set(CONDA_FOUND FALSE)
    if(ENABLE_PY_JUPYTER)
       message(STATUS "Building the default Jupyter kernel")
    else()

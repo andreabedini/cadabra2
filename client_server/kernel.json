@@ -1,6 +1,6 @@
 {
-    "display_name": "Cadabra",
-    "language" : "python",
+    "display_name": "Cadabra2 (native)",
+    "language": "python",
     "argv": [
         "cadabra-jupyter-kernel",
         "-f",
